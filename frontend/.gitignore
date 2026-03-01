@@ -1,0 +1,32 @@
+# Dependency directories
+node_modules/
+
+# Expo specific
+.expo/
+dist/
+web-build/
+
+# Android Specific
+android/app/build/
+android/.gradle/
+android/generated/
+*.jks
+*.p8
+*.p12
+*.key
+*.apk
+*.aab
+
+# iOS Specific
+ios/build/
+ios/Pods/
+ios/DerivedData/
+*.ipa
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Local environment
+.env.local
+.env.*.local
