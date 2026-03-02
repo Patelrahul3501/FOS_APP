@@ -31,7 +31,11 @@ export default function AdminExpenses() {
       const userRes = await api.get('/admin/users');
       setUsers(userRes.data);
       await fetchFilteredExpenses();
-    } catch (e) { console.log("Initial Fetch Error:", e); } finally { setLoading(false); }
+    } catch (e) { 
+      console.log("Initial Fetch Error:", e); 
+    } finally { 
+      setLoading(false); 
+    }
   };
 
   const fetchFilteredExpenses = async () => {
@@ -40,7 +44,18 @@ export default function AdminExpenses() {
       const query = `/admin/expense-logs?userId=${selectedUser.id}&start=${startDate}&end=${endDate}`;
       const res = await api.get(query);
       setExpenses(res.data);
-    } catch (e) { console.log("Expense Fetch Error:", e); } finally { setLoading(false); }
+    } catch (e) { 
+      console.log("Expense Fetch Error:", e); 
+    } finally { 
+      setLoading(false); 
+    }
+  };
+
+  // Helper: Format Time (e.g., 10:30 AM)
+  const formatTime = (dateStr) => {
+    if (!dateStr) return "--:--";
+    const date = new Date(dateStr);
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
   };
 
   // DELETE Logic
@@ -68,10 +83,13 @@ export default function AdminExpenses() {
       });
       setEditModalVisible(false);
       fetchFilteredExpenses();
-    } catch (e) { Alert.alert("Error", "Update failed."); } finally { setLoading(false); }
+    } catch (e) { 
+      Alert.alert("Error", "Update failed."); 
+    } finally { 
+      setLoading(false); 
+    }
   };
 
-  // Calculation for Total
   const totalAmount = expenses.reduce((sum, item) => sum + Number(item.amount), 0);
 
   return (
@@ -108,7 +126,7 @@ export default function AdminExpenses() {
       <FlatList
         data={expenses}
         keyExtractor={(item) => item._id}
-        contentContainerStyle={{ paddingBottom: 20 }} // Added for better scrolling
+        contentContainerStyle={{ paddingBottom: 20 }}
         renderItem={({ item }) => (
           <View style={styles.card}>
             <View style={styles.cardHeader}>
@@ -116,7 +134,12 @@ export default function AdminExpenses() {
                <Text style={styles.amount}>₹{item.amount}</Text>
             </View>
             <Text style={styles.title}>{item.title}</Text>
-            <Text style={styles.dateText}>{new Date(item.date).toLocaleDateString()}</Text>
+            
+            {/* DATE AND UPLOAD TIME ROW */}
+            <View style={styles.dateTimeContainer}>
+                <Text style={styles.dateText}>📅 {new Date(item.date).toLocaleDateString()}</Text>
+                <Text style={styles.timeText}>🕒 {formatTime(item.date)}</Text>
+            </View>
             
             <View style={styles.actionRow}>
                 <TouchableOpacity 
@@ -135,7 +158,6 @@ export default function AdminExpenses() {
         )}
       />
 
-      {/* TOTAL SUMMARY FOOTER */}
       <View style={styles.totalContainer}>
           <Text style={styles.totalLabel}>Filtered Total ({expenses.length} records):</Text>
           <Text style={styles.totalVal}>₹{totalAmount.toLocaleString()}</Text>
@@ -194,19 +216,8 @@ export default function AdminExpenses() {
 }
 
 const styles = StyleSheet.create({
-  container: { 
-    flex: 1, 
-    backgroundColor: '#121212', 
-    paddingHorizontal: 20, 
-    paddingTop: 10 // FIXED: Changed from 50 to 10 to remove upper space
-  },
-  header: { 
-    color: '#fff', 
-    fontSize: 22, 
-    fontWeight: 'bold', 
-    textAlign: 'center', 
-    marginBottom: 5 // Reduced margin
-  },
+  container: { flex: 1, backgroundColor: '#121212', paddingHorizontal: 20, paddingTop: 10 },
+  header: { color: '#fff', fontSize: 22, fontWeight: 'bold', textAlign: 'center', marginBottom: 5 },
   filterCard: { backgroundColor: '#1E1E1E', padding: 15, borderRadius: 15, marginVertical: 10, borderWidth: 1, borderColor: '#333' },
   label: { color: '#00E676', fontSize: 12, marginBottom: 5, fontWeight: 'bold' },
   dropdown: { backgroundColor: '#333', padding: 12, borderRadius: 8, marginBottom: 15, flexDirection: 'row', justifyContent: 'space-between' },
@@ -221,7 +232,12 @@ const styles = StyleSheet.create({
   userName: { color: '#00E676', fontWeight: 'bold', fontSize: 14 },
   amount: { color: '#fff', fontWeight: 'bold', fontSize: 18 },
   title: { color: '#ddd', fontSize: 16 },
-  dateText: { color: '#666', fontSize: 11, marginTop: 5 },
+  
+  // NEW TIME STYLES
+  dateTimeContainer: { flexDirection: 'row', alignItems: 'center', marginTop: 8 },
+  dateText: { color: '#888', fontSize: 11, marginRight: 15 },
+  timeText: { color: '#00E676', fontSize: 11, fontWeight: '600' },
+
   actionRow: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 10 },
   editBtn: { paddingHorizontal: 15, paddingVertical: 5, backgroundColor: 'rgba(0, 230, 118, 0.1)', borderRadius: 5, marginRight: 10 },
   editBtnText: { color: '#00E676', fontSize: 12, fontWeight: 'bold' },

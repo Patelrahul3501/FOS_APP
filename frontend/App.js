@@ -52,12 +52,21 @@ export default function App() {
   };
 
   const handleLogout = async () => {
-    await AsyncStorage.clear();
-    setIsLoggedIn(false);
-    setUserRole(null);
-    setIsOpen(false);
-    slideAnim.setValue(-SIDEBAR_WIDTH);
-    setCurrentScreen('DASHBOARD');
+    try {
+      // 1. Tell the backend to stop duty immediately upon logout
+      await api.post('/attendance/stop-duty');
+      console.log("✅ Duty stopped via logout");
+    } catch (e) {
+      console.log("Duty auto-stop failed or no active duty found:", e.message);
+    } finally {
+      // 2. Proceed with clearing session regardless of API success
+      await AsyncStorage.clear();
+      setIsLoggedIn(false);
+      setUserRole(null);
+      setIsOpen(false);
+      slideAnim.setValue(-SIDEBAR_WIDTH);
+      setCurrentScreen('DASHBOARD');
+    }
   };
 
   const navigateTo = (screen) => {

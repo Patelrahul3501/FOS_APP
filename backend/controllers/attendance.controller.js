@@ -170,3 +170,41 @@ export const getAttendanceHistory = async (req, res) => {
     res.status(500).json({ success: false, message: "Error fetching history" });
   }
 };
+
+
+export const stopDuty = async (req, res) => {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    // Find the active 'In Progress' record for the user
+    const record = await Attendance.findOne({ 
+      userId: req.user.id, 
+      date: today, 
+      status: 'In Progress' 
+    });
+
+    if (!record) {
+      return res.status(200).json({ message: "No active duty found to stop." });
+    }
+
+    const outTime = new Date();
+    const inTime = new Date(record.checkInTime);
+    const diffInHrs = (outTime - inTime) / (1000 * 60 * 60);
+
+    // Standard logic for status
+    let finalStatus = 'Present';
+    if (diffInHrs < 4) {
+      finalStatus = `${diffInHrs.toFixed(1)} Hours Worked`;
+    } else if (diffInHrs < 8.5) {
+      finalStatus = 'Half Day';
+    }
+
+    record.checkOutTime = outTime;
+    record.status = finalStatus;
+    record.workHours = diffInHrs.toFixed(2);
+    
+    await record.save();
+    res.status(200).json({ success: true, message: "Duty stopped on logout." });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
