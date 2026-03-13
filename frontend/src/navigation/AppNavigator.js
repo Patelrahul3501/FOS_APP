@@ -1,24 +1,99 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   View, Text, Animated, TouchableOpacity, StyleSheet, 
-  Dimensions, StatusBar, Platform
+  Dimensions, StatusBar, Platform, Linking, Vibration, Alert 
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Location from 'expo-location';
+import { api } from '../api/client';
 
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
 const DRAWER_WIDTH = width * 0.78;
 
 export default function SimpleSidebar({ children, onLogout, onNavigate, userRole }) {
   const [isOpen, setIsOpen] = useState(false);
   const slideAnim = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
 
+  const [locationPermission, setLocationPermission] = useState(true);
+  const [graceSeconds, setGraceSeconds] = useState(300);
+  const graceTimerRef = useRef(null);
+
+  useEffect(() => {
+    if (userRole === 'user') {
+      checkLocationSilently();
+      const interval = setInterval(checkLocationSilently, 4000);
+      return () => {
+        clearInterval(interval);
+        if (graceTimerRef.current) clearInterval(graceTimerRef.current);
+      };
+    }
+  }, [userRole]);
+
+  const checkLocationSilently = async () => {
+    try {
+      let { status: permStatus } = await Location.getForegroundPermissionsAsync();
+      let isServicesEnabled = await Location.hasServicesEnabledAsync();
+      const isGranted = permStatus === 'granted' && isServicesEnabled;
+
+      setLocationPermission(isGranted);
+
+      if (!isGranted) {
+        handleGracePeriod();
+      } else {
+        if (graceTimerRef.current) stopGracePeriod();
+      }
+    } catch (e) { console.log(e); }
+  };
+
+  const handleGracePeriod = async () => {
+    if (graceTimerRef.current) return;
+    let deadline = await AsyncStorage.getItem('graceDeadline');
+    if (!deadline) {
+      deadline = (Date.now() + 300000).toString();
+      await AsyncStorage.setItem('graceDeadline', deadline);
+      Alert.alert("⚠️ SECURITY", "Location disabled! Session terminates in 5 mins.");
+    }
+
+    graceTimerRef.current = setInterval(async () => {
+      const rem = Math.max(0, Math.floor((parseInt(deadline) - Date.now()) / 1000));
+      setGraceSeconds(rem);
+      if (rem <= 0) {
+        stopGracePeriod();
+        forceStopDuty();
+      } else if (rem % 60 === 0) Vibration.vibrate(500);
+    }, 1000);
+  };
+
+  const stopGracePeriod = async () => {
+    if (graceTimerRef.current) clearInterval(graceTimerRef.current);
+    graceTimerRef.current = null;
+    await AsyncStorage.removeItem('graceDeadline');
+    setGraceSeconds(300);
+  };
+
+  const forceStopDuty = async () => {
+    try {
+      await api.post('/attendance/stop-duty', { reason: "Compliance Violation" });
+      Alert.alert("TERMINATED", "Duty session closed due to security violation.");
+      onNavigate('Dashboard'); 
+    } catch (e) { console.log(e); }
+  };
+
+  const handleManualFix = async () => {
+    const { status } = await Location.requestForegroundPermissionsAsync();
+    if (status === 'granted') {
+      stopGracePeriod();
+      setLocationPermission(true);
+    } else {
+      Linking.openSettings();
+    }
+  };
+
+  const formatGraceTime = (sec) => `${Math.floor(sec / 60)}m ${sec % 60}s`;
+
   const toggleDrawer = (open) => {
     const toValue = open ? 0 : -DRAWER_WIDTH;
-    Animated.spring(slideAnim, {
-      toValue,
-      friction: 8,
-      tension: 40,
-      useNativeDriver: true,
-    }).start();
+    Animated.spring(slideAnim, { toValue, friction: 8, tension: 40, useNativeDriver: true }).start();
     setIsOpen(open);
   };
 
@@ -29,211 +104,128 @@ export default function SimpleSidebar({ children, onLogout, onNavigate, userRole
 
   return (
     <View style={styles.container}>
-      <StatusBar 
-        barStyle="light-content" 
-        backgroundColor="#121212" 
-        translucent={false} 
-      />
+      <StatusBar barStyle="light-content" backgroundColor="#121212" />
 
-      {/* 1. Sidebar Content */}
-      <Animated.View style={[styles.sidebar, { transform: [{ translateX: slideAnim }] }]}>
-        <View style={styles.innerSidebar}>
-          
-          {/* Header Section */}
-          <View style={styles.headerSection}>
-            <TouchableOpacity 
-              style={styles.closeTouch} 
-              onPress={() => toggleDrawer(false)}
-            >
-              <Text style={styles.closeIcon}>✕</Text>
-            </TouchableOpacity>
-
-            <View style={styles.profileInfo}>
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>{userRole === 'admin' ? 'AD' : 'FO'}</Text>
-                <View style={styles.statusDot} />
-              </View>
-              
-              <View style={styles.textContainer}>
-                <Text style={styles.userName}>
-                  {userRole === 'admin' ? 'System Admin' : 'Field Officer'}
-                </Text>
-                <View style={styles.brandBadge}>
-                  <Text style={styles.brandText}>F.O.S MENU</Text>
-                </View>
-              </View>
-            </View>
-          </View>
-
-          {/* Navigation Menu */}
-          <View style={styles.menuContainer}>
-            <Text style={styles.sectionTitle}>NAVIGATE</Text>
-            
-            <TouchableOpacity style={styles.menuItem} onPress={() => handleNavigation('Dashboard')}>
-              <Text style={styles.menuEmoji}>🏠</Text>
-              <Text style={styles.menuLabel}>Home Dashboard</Text>
-            </TouchableOpacity>
-
-            {/* ADDED: Profile link for all roles */}
-            <TouchableOpacity style={styles.menuItem} onPress={() => handleNavigation('PROFILE')}>
-              <Text style={styles.menuEmoji}>👤</Text>
-              <Text style={styles.menuLabel}>My Profile</Text>
-            </TouchableOpacity>
-
-            {userRole === 'user' && (
-              <>
-                <TouchableOpacity style={styles.menuItem} onPress={() => handleNavigation('AttendanceCalendar')}>
-                  <Text style={styles.menuEmoji}>📅</Text>
-                  <Text style={styles.menuLabel}>Attendance Logs</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.menuItem} onPress={() => handleNavigation('ExpenseScreen')}>
-                  <Text style={styles.menuEmoji}>💳</Text>
-                  <Text style={styles.menuLabel}>Expense Claims</Text>
-                </TouchableOpacity>
-              </>
-            )}
-
-            {userRole === 'admin' && (
-              <>
-                <TouchableOpacity style={styles.menuItem} onPress={() => handleNavigation('AdminExpenses')}>
-                  <Text style={styles.menuEmoji}>📈</Text>
-                  <Text style={styles.menuLabel}>Global Reports</Text>
-                </TouchableOpacity>
-              </>
-            )}
-          </View>
-
-          {/* Sign Out Footer */}
-          <View style={styles.footer}>
-            <TouchableOpacity style={styles.logoutBtn} onPress={onLogout}>
-              <Text style={styles.logoutText}>Sign Out</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Animated.View>
-
-      {/* 2. Main App Screen */}
+      {/* Main Container */}
       <View style={styles.main}>
-        <View style={styles.navBar}>
+        {/* FIX: Banner is now ABSOLUTELY positioned at the very top of the stack */}
+        {!locationPermission && userRole === 'user' && (
+          <TouchableOpacity 
+            style={styles.globalBanner} 
+            onPress={handleManualFix}
+            activeOpacity={0.9}
+          >
+            <Text style={styles.bannerText}>
+              ⚠️ <Text style={{fontWeight: '900'}}>LOCATION REQUIRED</Text>: {formatGraceTime(graceSeconds)}
+            </Text>
+            <View style={styles.bannerFixBtn}>
+              <Text style={styles.bannerFixText}>ENABLE</Text>
+            </View>
+          </TouchableOpacity>
+        )}
+
+        <View style={[styles.navBar, !locationPermission && userRole === 'user' && { marginTop: 0 }]}>
           {!isOpen && (
             <TouchableOpacity onPress={() => toggleDrawer(true)} style={styles.menuTrigger}>
-              <View style={styles.bar} />
-              <View style={[styles.bar, { width: 15 }]} />
-              <View style={styles.bar} />
+              <View style={styles.bar} /><View style={[styles.bar, { width: 15 }]} /><View style={styles.bar} />
             </TouchableOpacity>
           )}
           <Text style={styles.navTitle}>FIELD OFFICER SYSTEM</Text>
           <View style={{ width: 45 }} />
         </View>
 
-        {children}
-
-        {/* Clickable Overlay */}
-        {isOpen && (
-          <TouchableOpacity 
-            activeOpacity={1} 
-            onPress={() => toggleDrawer(false)} 
-            style={styles.dimmer} 
-          />
-        )}
+        {/* This View holds the rest of the app content */}
+        <View style={{ flex: 1 }}>
+          {children}
+        </View>
+        
+        {isOpen && <TouchableOpacity activeOpacity={1} onPress={() => toggleDrawer(false)} style={styles.dimmer} />}
       </View>
+
+      {/* Sidebar Content (Absolute Positioned over everything) */}
+      <Animated.View style={[styles.sidebar, { transform: [{ translateX: slideAnim }] }]}>
+        <View style={styles.innerSidebar}>
+           <View style={styles.headerSection}>
+              <TouchableOpacity style={styles.closeTouch} onPress={() => toggleDrawer(false)}>
+                <Text style={styles.closeIcon}>✕</Text>
+              </TouchableOpacity>
+              <View style={styles.profileInfo}>
+                <View style={styles.avatar}><Text style={styles.avatarText}>{userRole === 'admin' ? 'AD' : 'FO'}</Text></View>
+                <View style={styles.textContainer}>
+                  <Text style={styles.userName}>{userRole === 'admin' ? 'Admin' : 'Officer'}</Text>
+                  <Text style={styles.brandText}>F.O.S MENU</Text>
+                </View>
+              </View>
+           </View>
+           
+           <View style={styles.menuContainer}>
+             <TouchableOpacity style={styles.menuItem} onPress={() => handleNavigation('Dashboard')}>
+               <Text style={styles.menuEmoji}>🏠</Text><Text style={styles.menuLabel}>Home</Text>
+             </TouchableOpacity>
+             <TouchableOpacity style={styles.menuItem} onPress={() => handleNavigation('ExpenseScreen')}>
+               <Text style={styles.menuEmoji}>💳</Text><Text style={styles.menuLabel}>Expenses</Text>
+             </TouchableOpacity>
+           </View>
+
+           <View style={styles.footer}>
+             <TouchableOpacity style={styles.logoutBtn} onPress={onLogout}>
+               <Text style={styles.logoutText}>Sign Out</Text>
+             </TouchableOpacity>
+           </View>
+        </View>
+      </Animated.View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { 
-    flex: 1, 
-    backgroundColor: '#000',
-    paddingTop: Platform.OS === 'ios' ? 40 : 0 
-  },
-  sidebar: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    width: DRAWER_WIDTH,
-    backgroundColor: '#1A1A1A',
-    zIndex: 1000,
-    borderRightWidth: 1,
-    borderRightColor: '#333',
-  },
-  innerSidebar: { flex: 1 },
-  headerSection: {
-    paddingTop: 40,
-    paddingHorizontal: 25,
-    paddingBottom: 30,
-    backgroundColor: '#222',
-    borderBottomWidth: 1,
-    borderBottomColor: '#333',
-  },
-  closeTouch: {
-    position: 'absolute',
-    top: 40,
-    right: 20,
-    padding: 10,
-  },
-  closeIcon: { color: '#555', fontSize: 20, fontWeight: 'bold' },
-  profileInfo: { flexDirection: 'row', alignItems: 'center' },
-  avatar: { 
-    width: 55, 
-    height: 55, 
-    borderRadius: 15, 
-    backgroundColor: '#00E676', 
-    justifyContent: 'center', 
-    alignItems: 'center' 
-  },
-  avatarText: { fontWeight: 'bold', fontSize: 18, color: '#000' },
-  statusDot: {
-    position: 'absolute',
-    bottom: -4,
-    right: -4,
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    backgroundColor: '#00E676',
-    borderWidth: 3,
-    borderColor: '#222'
-  },
-  textContainer: { marginLeft: 15 },
-  userName: { color: '#fff', fontSize: 17, fontWeight: 'bold' },
-  brandBadge: {
-    alignSelf: 'flex-start',
-    backgroundColor: 'rgba(0, 230, 118, 0.1)',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 5,
-    marginTop: 5,
-  },
-  brandText: { color: '#00E676', fontSize: 10, fontWeight: 'bold' },
-  menuContainer: { flex: 1, padding: 20 },
-  sectionTitle: { color: '#444', fontSize: 10, fontWeight: 'bold', letterSpacing: 1.5, marginBottom: 20, marginLeft: 10 },
-  menuItem: { 
+  container: { flex: 1, backgroundColor: '#000' },
+  main: { flex: 1, backgroundColor: '#121212' },
+  globalBanner: { 
+    backgroundColor: '#FFD700', 
     flexDirection: 'row', 
     alignItems: 'center', 
-    paddingVertical: 15, 
-    paddingHorizontal: 15, 
-    borderRadius: 12, 
-    marginBottom: 5 
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    // Adjust height for Status Bar
+    paddingTop: Platform.OS === 'ios' ? 45 : StatusBar.currentHeight || 30,
+    paddingBottom: 15,
+    width: '100%',
+    zIndex: 9999, // Extremely high Z-Index
+    elevation: 20, // High elevation for Android
   },
+  bannerText: { color: '#000', fontWeight: 'bold', fontSize: 12, flex: 1 },
+  bannerFixBtn: { backgroundColor: '#000', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6 },
+  bannerFixText: { color: '#FFD700', fontSize: 10, fontWeight: '900' },
+  sidebar: { position: 'absolute', left: 0, top: 0, bottom: 0, width: DRAWER_WIDTH, backgroundColor: '#1A1A1A', zIndex: 10000 },
+  innerSidebar: { flex: 1 },
+  headerSection: { paddingTop: 50, paddingHorizontal: 20, paddingBottom: 20, backgroundColor: '#222' },
+  closeTouch: { position: 'absolute', top: 40, right: 10, padding: 10 },
+  closeIcon: { color: '#555', fontSize: 18 },
+  profileInfo: { flexDirection: 'row', alignItems: 'center' },
+  avatar: { width: 50, height: 50, borderRadius: 10, backgroundColor: '#00E676', justifyContent: 'center', alignItems: 'center' },
+  avatarText: { fontWeight: 'bold', color: '#000' },
+  textContainer: { marginLeft: 12 },
+  userName: { color: '#fff', fontWeight: 'bold' },
+  brandText: { color: '#00E676', fontSize: 10, fontWeight: 'bold' },
+  menuContainer: { flex: 1, padding: 15 },
+  menuItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 15 },
   menuEmoji: { fontSize: 18, marginRight: 15 },
-  menuLabel: { color: '#BBB', fontSize: 15, fontWeight: '600' },
-  footer: { padding: 25, borderTopWidth: 1, borderTopColor: '#333' },
-  logoutBtn: { padding: 15, borderRadius: 12, borderWidth: 1, borderColor: '#444', alignItems: 'center' },
+  menuLabel: { color: '#BBB', fontSize: 15 },
+  footer: { padding: 20 },
+  logoutBtn: { padding: 12, borderRadius: 10, borderWidth: 1, borderColor: '#444', alignItems: 'center' },
   logoutText: { color: '#FF5252', fontWeight: 'bold' },
-  main: { flex: 1 },
   navBar: { 
     height: 60, 
     flexDirection: 'row', 
     alignItems: 'center', 
     justifyContent: 'space-between', 
-    paddingHorizontal: 15,
     backgroundColor: '#121212',
     borderBottomWidth: 1,
     borderBottomColor: '#222'
   },
-  navTitle: { color: '#fff', fontSize: 12, fontWeight: '900', letterSpacing: 2 },
-  menuTrigger: { padding: 10 },
-  bar: { height: 2, width: 22, backgroundColor: '#00E676', marginVertical: 2.5, borderRadius: 2 },
-  dimmer: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 500 }
+  navTitle: { color: '#fff', fontSize: 10, fontWeight: '900', letterSpacing: 2 },
+  menuTrigger: { padding: 15 },
+  bar: { height: 2, width: 20, backgroundColor: '#00E676', marginVertical: 2 },
+  dimmer: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.8)', zIndex: 500 }
 });

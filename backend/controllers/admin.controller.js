@@ -12,14 +12,14 @@ export const getAdminSummary = async (req, res) => {
     const totalUsers = await User.countDocuments({ role: 'user' });
     const today = new Date().toISOString().split('T')[0];
 
-    // Find all attendance records for today
+    // 1. Find all attendance records for today
+    // Added 'lat', 'lng', and 'updatedAt' to the selection
     const activeAttendance = await Attendance.find({ date: today })
       .populate('userId', 'name email phone') 
-      .select('checkInLocation checkInTime checkOutTime workHours userId selfie status');
+      .select('checkInLocation checkInTime checkOutTime workHours userId selfie status lat lng updatedAt');
 
-    // Use Promise.all to fetch expenses for each user in parallel
+    // 2. Fetch expenses in parallel
     const activeLocations = await Promise.all(activeAttendance.map(async (item) => {
-      // Find expenses for this user today
       const dailyExpenses = await Expense.find({ 
         userId: item.userId?._id, 
         date: { 
@@ -35,11 +35,14 @@ export const getAdminSummary = async (req, res) => {
         attendanceId: item._id, 
         name: item.userId?.name || 'Unknown Officer',
         phone: item.userId?.phone || '', 
-        lat: item.checkInLocation?.lat,
-        lng: item.checkInLocation?.lng,
+        // FIX: Use the live tracking lat/lng if they exist, fallback to check-in location
+        lat: item.lat || item.checkInLocation?.lat,
+        lng: item.lng || item.checkInLocation?.lng,
         selfie: item.selfie,
         checkInTime: item.checkInTime,
         checkOutTime: item.checkOutTime || null, 
+        // FIX: Send updatedAt so the Admin Dashboard can show the real "Last Seen" time
+        updatedAt: item.updatedAt || item.checkInTime,
         workHours: item.workHours || "0.00",
         status: item.status,
         todayExpense: totalSpent,
@@ -182,14 +185,30 @@ export const getExpenseLogs = async (req, res) => {
 export const getUserRoute = async (req, res) => {
   try {
     const { userId, date } = req.query;
-    const filterDate = date || new Date().toISOString().split('T')[0];
-    const points = await Attendance.find({ userId, date: filterDate }).sort({ timestamp: 1 }).select('checkInLocation');
-    const coordinates = points.map(p => ({ 
-      latitude: p.checkInLocation.lat, 
-      longitude: p.checkInLocation.lng 
+
+    const record = await Attendance.findOne({ userId, date })
+      .select('+routeHistory'); // Manually include the hidden history field
+
+    if (!record) {
+      return res.status(404).json({ message: "No route data found" });
+    }
+
+    // Map data for Frontend (Polyline expects latitude/longitude)
+    const coordinates = record.routeHistory.map(p => ({
+      latitude: p.lat,
+      longitude: p.lng,
+      time: p.time
     }));
-    res.json(coordinates);
-  } catch (error) { res.status(500).json({ message: error.message }); }
+
+    res.json({
+      coordinates,
+      totalDistance: record.distanceTraveled.toFixed(2),
+      start: record.checkInTime,
+      end: record.updatedAt
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
 };
 
 export const deleteAttendance = async (req, res) => {

@@ -5,7 +5,9 @@ import {
   getAttendanceHistory, 
   checkIn, 
   checkOut ,
-  resumeDuty
+  resumeDuty,
+  stopDuty,
+  updateLocation
 } from '../controllers/attendance.controller.js';
 import { protect } from '../middleware/auth.middleware.js';
 
@@ -21,6 +23,10 @@ router.post('/check-in', protect, checkIn);
 router.post('/check-out', protect, checkOut);
 router.get('/status', protect, checkStatus);
 router.get('/history', protect, getAttendanceHistory);
+
+router.post('/update-location', protect, updateLocation);
+
+router.post('/stop-duty', protect, stopDuty);
 
 router.post('/resume', protect, resumeDuty);
 

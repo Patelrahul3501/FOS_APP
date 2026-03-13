@@ -57,11 +57,9 @@ export default function AdminAttendance() {
     ]);
   };
 
-  // Update Status Function
   const updateStatus = async (newStatus) => {
     try {
       setLoading(true);
-      // Ensure this endpoint exists on your backend
       await api.put(`/admin/attendance-status/${activeLogId}`, { status: newStatus });
       setStatusModalVisible(false);
       Alert.alert("Success", `Status updated to ${newStatus}`);
@@ -76,6 +74,17 @@ export default function AdminAttendance() {
   const formatTime = (timeStr) => {
     if (!timeStr) return "--:--";
     return new Date(timeStr).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
+  // Helper to determine status color
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'Terminated': return '#FF5252'; // Red for violations
+      case 'Half Day': return '#FBC02D';   // Yellow
+      case 'Absent': return '#FF8A65';     // Orange
+      case 'In Progress': return '#2196F3'; // Blue
+      default: return '#00E676';           // Green for Present
+    }
   };
 
   return (
@@ -113,7 +122,7 @@ export default function AdminAttendance() {
         data={logs}
         keyExtractor={item => item._id}
         renderItem={({ item }) => (
-          <View style={styles.logCard}>
+          <View style={[styles.logCard, item.status === 'Terminated' && styles.terminatedCard]}>
             <View style={styles.cardHeader}>
                 <Image 
                   source={{ 
@@ -128,9 +137,15 @@ export default function AdminAttendance() {
                     <Text style={styles.logDate}>📅 {item.date}</Text>
                 </View>
                 <TouchableOpacity onPress={() => handleDelete(item._id)} style={styles.miniDelete}>
-                   <Text style={{ color: '#FF5252', fontSize: 10 }}>DELETE</Text>
+                    <Text style={{ color: '#FF5252', fontSize: 10 }}>DELETE</Text>
                 </TouchableOpacity>
             </View>
+
+            {item.status === 'Terminated' && (
+               <View style={styles.violationBadge}>
+                  <Text style={styles.violationText}>⚠️ SECURITY TERMINATION: Location Disabled</Text>
+               </View>
+            )}
 
             <View style={styles.divider} />
 
@@ -151,7 +166,7 @@ export default function AdminAttendance() {
 
             <View style={styles.footerRow}>
                 <TouchableOpacity 
-                  style={[styles.statusBadge, { backgroundColor: item.status === 'Half Day' ? '#FBC02D' : item.status === 'Absent' ? '#FF5252' : '#00E676' }]}
+                  style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) }]}
                   onPress={() => { 
                     setActiveLogId(item._id); 
                     setStatusModalVisible(true); 
@@ -164,8 +179,6 @@ export default function AdminAttendance() {
           </View>
         )}
       />
-
-      {/* --- ALL MODALS AT THE END FOR ANDROID STABILITY --- */}
 
       {/* Officer Selection Modal */}
       <Modal visible={userModalVisible} animationType="slide" transparent={true}>
@@ -193,7 +206,7 @@ export default function AdminAttendance() {
       </Modal>
 
       {/* Status Edit Modal */}
-      <Modal visible={statusModalVisible} transparent={true} animationType="fade" onRequestClose={() => setStatusModalVisible(false)}>
+      <Modal visible={statusModalVisible} transparent={true} animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Update Status</Text>
@@ -206,8 +219,12 @@ export default function AdminAttendance() {
               <Text style={[styles.statusOptionText, {color: '#FBC02D'}]}>Half Day</Text>
             </TouchableOpacity>
 
+            <TouchableOpacity style={styles.statusOption} onPress={() => updateStatus('Terminated')}>
+              <Text style={[styles.statusOptionText, {color: '#FF5252'}]}>Terminated (Violation)</Text>
+            </TouchableOpacity>
+
             <TouchableOpacity style={styles.statusOption} onPress={() => updateStatus('Absent')}>
-              <Text style={[styles.statusOptionText, {color: '#FF5252'}]}>Absent</Text>
+              <Text style={[styles.statusOptionText, {color: '#FF8A65'}]}>Absent</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.closeBtn} onPress={() => setStatusModalVisible(false)}>
@@ -236,10 +253,13 @@ const styles = StyleSheet.create({
   filterBtn: { backgroundColor: '#00E676', padding: 15, borderRadius: 10, alignItems: 'center' },
   filterBtnText: { color: '#000', fontWeight: 'bold' },
   logCard: { backgroundColor: '#1E1E1E', padding: 15, borderRadius: 15, marginBottom: 15, borderWidth: 1, borderColor: '#333' },
+  terminatedCard: { borderColor: '#FF5252', borderWidth: 1.5 },
   cardHeader: { flexDirection: 'row', alignItems: 'center' },
   thumbnail: { width: 50, height: 50, borderRadius: 25, marginRight: 15, backgroundColor: '#333' },
   logName: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
   logDate: { color: '#888', fontSize: 12, marginTop: 2 },
+  violationBadge: { backgroundColor: 'rgba(255, 82, 82, 0.1)', padding: 8, borderRadius: 5, marginTop: 10 },
+  violationText: { color: '#FF5252', fontSize: 11, fontWeight: 'bold', textAlign: 'center' },
   divider: { height: 1, backgroundColor: '#333', marginVertical: 12 },
   timeRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   timeBlock: { flex: 1, alignItems: 'center', paddingVertical: 5 },
@@ -247,10 +267,8 @@ const styles = StyleSheet.create({
   timeVal: { color: '#fff', fontSize: 14, fontWeight: 'bold' },
   footerRow: { marginTop: 15, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   statusBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6 },
-  statusText: { color: '#000', fontSize: 12, fontWeight: 'bold' },
+  statusText: { color: '#000', fontSize: 11, fontWeight: 'bold' },
   miniDelete: { padding: 5, borderWidth: 1, borderColor: '#FF5252', borderRadius: 4 },
-  
-  // MODAL STYLES
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center' },
   modalContent: { width: '85%', backgroundColor: '#1E1E1E', borderRadius: 20, padding: 25, borderWidth: 1, borderColor: '#333' },
   modalTitle: { color: '#00E676', fontSize: 20, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },

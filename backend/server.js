@@ -7,6 +7,8 @@ import attendanceRoutes from './routes/attendance.routes.js';
 import expenseRoutes from './routes/expense.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 
+import './utils/cronJobs.js';
+
 dotenv.config();
 const app = express();
 
