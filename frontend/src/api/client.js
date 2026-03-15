@@ -6,6 +6,12 @@ export const api = axios.create({
   timeout: 10000,
 });
 
+let logoutCallback = null;
+
+export const setLogoutCallback = (callback) => {
+  logoutCallback = callback;
+};
+
 api.interceptors.request.use(async (config) => {
   // Ensure we await the latest token from storage
   const token = await AsyncStorage.getItem('userToken');
@@ -20,9 +26,12 @@ api.interceptors.response.use(
   (response) => response,
   async (error) => {
     if (error.response && error.response.status === 401) {
-      console.log("Token expired or invalid. Logging out...");
+      console.log("Token expired or invalid. Triggering logout...");
       await AsyncStorage.removeItem('userToken');
-      // Optional: Trigger a global logout event or redirect here
+      
+      if (logoutCallback) {
+        logoutCallback();
+      }
     }
     return Promise.reject(error);
   }

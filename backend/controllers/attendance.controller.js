@@ -1,5 +1,23 @@
 import Attendance from '../models/Attendance.js';
 import User from '../models/User.js';
+import Holiday from '../models/Holiday.js';
+import { logActivity } from '../utils/logger.js';
+
+/**
+ * 0. CHECK IF TODAY IS A HOLIDAY
+ */
+export const isHoliday = async (req, res) => {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const holiday = await Holiday.findOne({ date: today });
+    if (holiday) {
+      return res.json({ isHoliday: true, name: holiday.name });
+    }
+    return res.json({ isHoliday: false });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Error checking holiday" });
+  }
+};
 
 /**
  * 1. CHECK-IN: Start the duty timer
@@ -44,6 +62,10 @@ export const checkIn = async (req, res) => {
     });
 
     await newRecord.save();
+    
+    // Log Punch In
+    await logActivity(userId, 'Punch In', `Punched in at ${new Date().toLocaleTimeString()} from lat: ${location.lat}, lng: ${location.lng}`);
+
     res.status(201).json({ success: true, message: 'Check-in successful! Duty started.' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -82,6 +104,9 @@ export const checkOut = async (req, res) => {
 
     await record.save();
 
+    // Log Punch Out
+    await logActivity(userId, 'Punch Out', `Punched out after ${diffInHrs.toFixed(2)} hours. Final Status: ${finalStatus}`);
+
     res.status(200).json({ 
       success: true, 
       message: `Duty ended. Status: ${finalStatus}`,
@@ -119,8 +144,19 @@ export const resumeDuty = async (req, res) => {
     // Resetting fields to put the user back "On Duty"
     record.checkOutTime = undefined;
     record.checkOutLocation = undefined;
-    record.status = 'In Progress';
     record.workHours = "0"; // Reset so it recalculates correctly on next checkout
+    // If they were Terminated before resuming, log that formal recovery
+    if (record.status === 'Terminated') {
+      record.terminations.push({
+        time: new Date(),
+        reason: "User recovered from Termination and Resumed Duty"
+      });
+      await logActivity(userId, 'Resume Duty', `Recovered from Termination and resumed duty.`);
+    } else {
+      await logActivity(userId, 'Resume Duty', `Resumed duty mid-shift.`);
+    }
+
+    record.status = "In Progress";
     record.autoStopped = false;
     record.terminationReason = null;
     
@@ -176,7 +212,16 @@ export const checkStatus = async (req, res) => {
  */
 export const getAttendanceHistory = async (req, res) => {
   try {
-    const records = await Attendance.find({ userId: req.user._id });
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const dateString = thirtyDaysAgo.toISOString().split('T')[0];
+
+    // O(1) indexed query limiting to 30 days with .lean() for maximum speed
+    const records = await Attendance.find({ 
+      userId: req.user._id,
+      date: { $gte: dateString }
+    }).lean();
+
     const historyMap = {};
     
     records.forEach(rec => {
@@ -236,6 +281,7 @@ export const stopDuty = async (req, res) => {
     if (reason === "Compliance Violation") {
       record.status = "Terminated";
       record.terminationReason = "Location Permission Revoked during shift";
+      record.terminations.push({ time: outTime, reason: record.terminationReason });
     } else {
       if (diffInHrs < 4) {
         record.status = `${diffInHrs.toFixed(1)} Hours Worked`;
@@ -247,6 +293,13 @@ export const stopDuty = async (req, res) => {
     }
 
     await record.save();
+    
+    // Log termination or manual stop
+    if (reason === "Compliance Violation") {
+      await logActivity(userId, 'Terminated', `Security Termination: Location Services Revoked or Missing.`);
+    } else {
+      await logActivity(userId, 'Punch Out', `Duty stopped. Total hours: ${diffInHrs.toFixed(2)}. Status: ${record.status}`);
+    }
     
     console.log(`Duty successfully stopped for ${userId}. Reason: ${reason || 'Manual'}`);
 
@@ -294,7 +347,7 @@ export const updateLocation = async (req, res) => {
     await Attendance.updateOne(
       { _id: record._id },
       { 
-        $set: { lat, lng },
+        $set: { lat, lng, lastLocationSync: new Date() },
         $inc: { distanceTraveled: distanceIncrement },
         $push: { routeHistory: { lat, lng, time: new Date() } }
       }

@@ -9,8 +9,13 @@ import {
   getUserRoute,
   updateAttendanceStatus, 
   deleteAttendance,
-  updateExpenseAdmin, // Import new controller
-  deleteExpenseAdmin  // Import new controller
+  updateExpenseAdmin,
+  deleteExpenseAdmin,
+  getSystemLogs,
+  deleteSystemLog,
+  getHolidays,
+  addHoliday,
+  deleteHoliday
 } from '../controllers/admin.controller.js';
 import { protect } from '../middleware/auth.middleware.js';
 
@@ -31,5 +36,13 @@ router.delete('/attendance/:id', protect, deleteAttendance);
 // --- NEW EXPENSE MANAGEMENT ROUTES ---
 router.put('/expenses/:id', protect, updateExpenseAdmin);
 router.delete('/expenses/:id', protect, deleteExpenseAdmin);
+
+// --- SYSTEM LOGS & HOLIDAYS ---
+router.get('/system-logs', protect, getSystemLogs);
+router.delete('/system-logs/:id', protect, deleteSystemLog);
+
+router.get('/holidays', protect, getHolidays);
+router.post('/holidays', protect, addHoliday);
+router.delete('/holidays/:id', protect, deleteHoliday);
 
 export default router;

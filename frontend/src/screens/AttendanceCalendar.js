@@ -1,20 +1,27 @@
 import React, { useState, useEffect } from 'react';
 import { 
   View, Text, StyleSheet, ScrollView, 
-  ActivityIndicator, Modal, TouchableOpacity 
+  ActivityIndicator, Modal, TouchableOpacity,
+  InteractionManager
 } from 'react-native';
 import { Calendar } from 'react-native-calendars';
 import { api } from '../api/client';
+import SkeletonLoader from '../components/SkeletonLoader';
 
 export default function AttendanceCalendar() {
   const [markedDates, setMarkedDates] = useState({});
   const [historyData, setHistoryData] = useState({}); 
   const [loading, setLoading] = useState(true);
+  const [isReady, setIsReady] = useState(false);
   
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedDayInfo, setSelectedDayInfo] = useState(null);
 
-  useEffect(() => { fetchHistory(); }, []);
+  useEffect(() => { 
+    InteractionManager.runAfterInteractions(() => {
+      fetchHistory(); 
+    });
+  }, []);
 
   const fetchHistory = async () => {
     try {
@@ -35,7 +42,11 @@ export default function AttendanceCalendar() {
     } catch (e) { 
       console.log("History fetch failed", e); 
     } finally {
-      setLoading(false);
+      // Small timeout to guarantee DOM has painted navigation
+      setTimeout(() => {
+        setLoading(false);
+        setTimeout(() => setIsReady(true), 50);
+      }, 50);
     }
   };
 
@@ -109,22 +120,25 @@ const generateMarkedDates = (history) => {
     <View style={styles.container}>
       <Text style={styles.header}>Attendance History</Text>
       
-      {loading ? (
-        <ActivityIndicator size="large" color="#00E676" style={{ marginTop: 50 }} />
+      {loading || !isReady ? (
+        <View style={{ paddingTop: 10 }}>
+          <SkeletonLoader style={{ width: '100%', height: 350, borderRadius: 24, marginBottom: 25, alignSelf: 'center' }} />
+          <SkeletonLoader type="list" />
+        </View>
       ) : (
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
           <View style={styles.calendarWrapper}>
             <Calendar
               onDayPress={onDayPress}
               theme={{ 
-                calendarBackground: '#1E1E1E', 
-                dayTextColor: '#fff', 
-                monthTextColor: '#00E676', 
-                todayTextColor: '#00E676', 
-                arrowColor: '#00E676', 
-                textDisabledColor: '#444',
+                calendarBackground: '#18181B', 
+                dayTextColor: '#F4F4F5', 
+                monthTextColor: '#10B981', 
+                todayTextColor: '#10B981', 
+                arrowColor: '#10B981', 
+                textDisabledColor: '#3F3F46',
                 'stylesheet.day.basic': {
-                  base: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }
+                  base: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center' }
                 }
               }}
               markedDates={markedDates}
@@ -186,29 +200,32 @@ const generateMarkedDates = (history) => {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#121212', paddingHorizontal: 20, paddingTop: 20 },
-  header: { color: '#fff', fontSize: 22, fontWeight: 'bold', textAlign: 'center', marginBottom: 20 },
+  container: { flex: 1, backgroundColor: '#0A0A0A', paddingHorizontal: 20, paddingTop: 20 },
+  header: { color: '#ffffff', fontSize: 26, fontWeight: '900', textAlign: 'center', marginBottom: 25, letterSpacing: 0.5 },
   scrollContent: { paddingBottom: 30 },
-  calendarWrapper: { borderRadius: 15, overflow: 'hidden', borderWidth: 1, borderColor: '#333' },
-  legend: { marginTop: 20, backgroundColor: '#1E1E1E', padding: 20, borderRadius: 12, borderWidth: 1, borderColor: '#333' },
+  calendarWrapper: { 
+    borderRadius: 24, overflow: 'hidden', borderWidth: 1, borderColor: '#27272A', backgroundColor: '#18181B',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 15, elevation: 8
+  },
+  legend: { marginTop: 25, backgroundColor: '#18181B', padding: 22, borderRadius: 20, borderWidth: 1, borderColor: '#27272A' },
   legendRow: { flexDirection: 'row', justifyContent: 'space-between' },
   legendItem: { flexDirection: 'row', alignItems: 'center', width: '45%' },
-  dot: { width: 12, height: 12, borderRadius: 6, marginRight: 10 },
-  legendText: { color: '#bbb', fontSize: 14 },
+  dot: { width: 14, height: 14, borderRadius: 7, marginRight: 12 },
+  legendText: { color: '#A1A1AA', fontSize: 13, fontWeight: '700' },
   
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center' },
-  modalContent: { width: '85%', backgroundColor: '#1E1E1E', borderRadius: 20, padding: 25, borderWidth: 1, borderColor: '#333' },
-  modalDate: { color: '#00E676', fontSize: 18, fontWeight: 'bold', textAlign: 'center', marginBottom: 20 },
-  detailRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 },
-  detailLabel: { color: '#888', fontSize: 14 },
-  detailValue: { fontSize: 14, fontWeight: 'bold' },
-  timeBox: { flexDirection: 'row', backgroundColor: '#252525', borderRadius: 12, padding: 15, marginBottom: 15 },
+  modalContent: { width: '85%', backgroundColor: '#18181B', borderRadius: 24, padding: 25, borderWidth: 1, borderColor: '#27272A' },
+  modalDate: { color: '#10B981', fontSize: 20, fontWeight: '900', textAlign: 'center', marginBottom: 25, letterSpacing: 0.5 },
+  detailRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 },
+  detailLabel: { color: '#71717A', fontSize: 13, fontWeight: '800', textTransform: 'uppercase' },
+  detailValue: { fontSize: 15, fontWeight: '900', letterSpacing: 0.5 },
+  timeBox: { flexDirection: 'row', backgroundColor: '#27272A', borderRadius: 16, padding: 18, marginBottom: 20 },
   timeCol: { flex: 1, alignItems: 'center' },
-  timeLabel: { color: '#666', fontSize: 10, fontWeight: 'bold', textTransform: 'uppercase' },
-  timeText: { color: '#fff', fontSize: 16, fontWeight: 'bold', marginTop: 5 },
-  workHoursContainer: { alignItems: 'center', padding: 15, borderTopWidth: 1, borderTopColor: '#333' },
-  workHoursLabel: { color: '#888', fontSize: 12 },
-  workHoursValue: { color: '#FFD600', fontSize: 24, fontWeight: 'bold', marginTop: 5 },
-  closeBtn: { marginTop: 20, backgroundColor: '#333', padding: 12, borderRadius: 10, alignItems: 'center' },
-  closeBtnText: { color: '#fff', fontWeight: 'bold' }
+  timeLabel: { color: '#A1A1AA', fontSize: 11, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1 },
+  timeText: { color: '#ffffff', fontSize: 17, fontWeight: '800', marginTop: 8 },
+  workHoursContainer: { alignItems: 'center', padding: 18, borderTopWidth: 1, borderTopColor: '#3F3F46' },
+  workHoursLabel: { color: '#A1A1AA', fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1 },
+  workHoursValue: { color: '#FBBF24', fontSize: 28, fontWeight: '900', marginTop: 8 },
+  closeBtn: { marginTop: 20, backgroundColor: '#10B981', padding: 16, borderRadius: 14, alignItems: 'center' },
+  closeBtnText: { color: '#064E3B', fontWeight: '900', letterSpacing: 1 }
 });

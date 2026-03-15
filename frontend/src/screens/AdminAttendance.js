@@ -3,8 +3,10 @@ import {
   View, Text, StyleSheet, TouchableOpacity, FlatList, 
   ActivityIndicator, Image, Alert, Modal 
 } from 'react-native';
+import { Calendar } from 'react-native-calendars';
 import DateTimePickerModal from "react-native-modal-datetime-picker";
 import { api } from '../api/client';
+import SkeletonLoader from '../components/SkeletonLoader';
 
 export default function AdminAttendance() {
   const [logs, setLogs] = useState([]);
@@ -23,7 +25,16 @@ export default function AdminAttendance() {
   const [isStartPickerVisible, setStartPickerVisibility] = useState(false);
   const [isEndPickerVisible, setEndPickerVisibility] = useState(false);
 
-  useEffect(() => { fetchInitialData(); }, []);
+  useEffect(() => { 
+    fetchInitialData(); 
+  }, []);
+
+  useEffect(() => {
+    // Auto-fetch when date or user changes
+    if (!loading && users.length > 0) {
+      applyFilters();
+    }
+  }, [startDate, endDate, selectedUser]);
 
   const fetchInitialData = async () => {
     setLoading(true);
@@ -98,6 +109,7 @@ export default function AdminAttendance() {
           <Text style={styles.dropdownText}>▼</Text>
         </TouchableOpacity>
 
+        {/* Date Range Filters */}
         <View style={styles.row}>
           <View style={{ flex: 1, marginRight: 10 }}>
             <Text style={styles.label}>From</Text>
@@ -114,36 +126,57 @@ export default function AdminAttendance() {
         </View>
 
         <TouchableOpacity style={styles.filterBtn} onPress={applyFilters}>
-          {loading ? <ActivityIndicator color="#000" /> : <Text style={styles.filterBtnText}>APPLY FILTERS</Text>}
+          {loading ? <ActivityIndicator color="#042F2E" /> : <Text style={styles.filterBtnText}>APPLY FILTERS</Text>}
         </TouchableOpacity>
       </View>
 
-      <FlatList
-        data={logs}
-        keyExtractor={item => item._id}
-        renderItem={({ item }) => (
-          <View style={[styles.logCard, item.status === 'Terminated' && styles.terminatedCard]}>
-            <View style={styles.cardHeader}>
-                <Image 
-                  source={{ 
-                    uri: item.selfie 
-                        ? (item.selfie.startsWith('data:image') ? item.selfie : `data:image/jpeg;base64,${item.selfie}`)
-                        : 'https://via.placeholder.com/150' 
-                  }} 
-                  style={styles.thumbnail} 
-                />
-                <View style={{ flex: 1 }}>
-                    <Text style={styles.logName}>{item.userId?.name || 'Unknown'}</Text>
-                    <Text style={styles.logDate}>📅 {item.date}</Text>
-                </View>
-                <TouchableOpacity onPress={() => handleDelete(item._id)} style={styles.miniDelete}>
-                    <Text style={{ color: '#FF5252', fontSize: 10 }}>DELETE</Text>
-                </TouchableOpacity>
-            </View>
+      {loading ? (
+        <SkeletonLoader type="list" />
+      ) : (
+        <FlatList
+          data={logs}
+          keyExtractor={item => item._id}
+          initialNumToRender={10}
+          maxToRenderPerBatch={10}
+          windowSize={5}
+          ListEmptyComponent={<Text style={{color: '#71717A', textAlign: 'center', marginTop: 20, fontStyle: 'italic'}}>No records found for this range.</Text>}
+          renderItem={({ item }) => (
+            <View style={[styles.logCard, item.status === 'Terminated' && styles.terminatedCard]}>
+              <View style={styles.cardHeader}>
+                  <Image 
+                    source={{ 
+                      uri: item.selfie 
+                          ? (item.selfie.startsWith('data:image') ? item.selfie : `data:image/jpeg;base64,${item.selfie}`)
+                          : 'https://via.placeholder.com/150' 
+                    }} 
+                    style={styles.thumbnail} 
+                  />
+                  <View style={{ flex: 1 }}>
+                      <Text style={styles.logName}>{item.userId?.name || 'Unknown'}</Text>
+                      <Text style={styles.logDate}>📅 {item.date}</Text>
+                  </View>
+                  <TouchableOpacity onPress={() => handleDelete(item._id)} style={styles.miniDelete}>
+                      <Text style={{ color: '#EF4444', fontSize: 10, fontWeight: '800' }}>DELETE</Text>
+                  </TouchableOpacity>
+              </View>
 
             {item.status === 'Terminated' && (
                <View style={styles.violationBadge}>
-                  <Text style={styles.violationText}>⚠️ SECURITY TERMINATION: Location Disabled</Text>
+                  <Text style={styles.violationText}>⚠️ ONGOING TERMINATION: Location Disabled</Text>
+               </View>
+            )}
+
+            {/* NEW: Termination History Tracker */}
+            {item.terminations && item.terminations.length > 0 && (
+               <View style={styles.historyBox}>
+                  <Text style={styles.historyTitle}>
+                    {item.terminations.length} Session Disconnect{item.terminations.length > 1 ? 's' : ''} Today
+                  </Text>
+                  {item.terminations.map((term, index) => (
+                    <Text key={index} style={styles.historyItem}>
+                      • {formatTime(term.time)} - {term.reason}
+                    </Text>
+                  ))}
                </View>
             )}
 
@@ -179,6 +212,7 @@ export default function AdminAttendance() {
           </View>
         )}
       />
+      )}
 
       {/* Officer Selection Modal */}
       <Modal visible={userModalVisible} animationType="slide" transparent={true}>
@@ -233,7 +267,6 @@ export default function AdminAttendance() {
           </View>
         </View>
       </Modal>
-
       <DateTimePickerModal isVisible={isStartPickerVisible} mode="date" onConfirm={(d) => { setStartDate(d.toISOString().split('T')[0]); setStartPickerVisibility(false); }} onCancel={() => setStartPickerVisibility(false)} />
       <DateTimePickerModal isVisible={isEndPickerVisible} mode="date" onConfirm={(d) => { setEndDate(d.toISOString().split('T')[0]); setEndPickerVisibility(false); }} onCancel={() => setEndPickerVisibility(false)} />
     </View>
@@ -241,41 +274,47 @@ export default function AdminAttendance() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#121212', paddingHorizontal: 15, paddingTop: 20 },
-  header: { color: '#fff', fontSize: 22, fontWeight: 'bold', textAlign: 'center', marginBottom: 20 },
-  filterCard: { backgroundColor: '#1E1E1E', padding: 15, borderRadius: 15, marginBottom: 20, borderWidth: 1, borderColor: '#333' },
-  label: { color: '#00E676', fontSize: 12, marginBottom: 5, fontWeight: 'bold' },
-  dropdown: { backgroundColor: '#333', padding: 12, borderRadius: 8, marginBottom: 15, flexDirection: 'row', justifyContent: 'space-between' },
-  dropdownText: { color: '#fff' },
+  container: { flex: 1, backgroundColor: '#0A0A0A', paddingHorizontal: 15, paddingTop: 20 },
+  header: { color: '#ffffff', fontSize: 26, fontWeight: '900', textAlign: 'center', marginBottom: 20, letterSpacing: 0.5 },
+  filterCard: { 
+    backgroundColor: '#18181B', padding: 20, borderRadius: 24, marginBottom: 20, borderWidth: 1, borderColor: '#27272A',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 15, elevation: 8 
+  },
+  label: { color: '#10B981', fontSize: 12, marginBottom: 6, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1 },
+  dropdown: { backgroundColor: '#27272A', padding: 15, borderRadius: 14, marginBottom: 20, flexDirection: 'row', justifyContent: 'space-between', borderWidth: 1, borderColor: '#3F3F46' },
+  dropdownText: { color: '#F4F4F5', fontWeight: '800' },
   row: { flexDirection: 'row', marginBottom: 15 },
-  dateBtn: { backgroundColor: '#333', padding: 12, borderRadius: 8, alignItems: 'center' },
-  dateBtnText: { color: '#fff' },
-  filterBtn: { backgroundColor: '#00E676', padding: 15, borderRadius: 10, alignItems: 'center' },
-  filterBtnText: { color: '#000', fontWeight: 'bold' },
-  logCard: { backgroundColor: '#1E1E1E', padding: 15, borderRadius: 15, marginBottom: 15, borderWidth: 1, borderColor: '#333' },
-  terminatedCard: { borderColor: '#FF5252', borderWidth: 1.5 },
+  dateBtn: { backgroundColor: '#27272A', padding: 12, borderRadius: 12, alignItems: 'center', borderWidth: 1, borderColor: '#3F3F46' },
+  dateBtnText: { color: '#F4F4F5', fontWeight: '700' },
+  filterBtn: { backgroundColor: '#10B981', padding: 15, borderRadius: 12, alignItems: 'center', marginTop: 5 },
+  filterBtnText: { color: '#064E3B', fontWeight: '900', letterSpacing: 1 },
+  logCard: { backgroundColor: '#18181B', padding: 18, borderRadius: 20, marginBottom: 15, borderWidth: 1, borderColor: '#27272A' },
+  terminatedCard: { borderColor: '#EF4444', borderWidth: 1.5 },
   cardHeader: { flexDirection: 'row', alignItems: 'center' },
-  thumbnail: { width: 50, height: 50, borderRadius: 25, marginRight: 15, backgroundColor: '#333' },
-  logName: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
-  logDate: { color: '#888', fontSize: 12, marginTop: 2 },
-  violationBadge: { backgroundColor: 'rgba(255, 82, 82, 0.1)', padding: 8, borderRadius: 5, marginTop: 10 },
-  violationText: { color: '#FF5252', fontSize: 11, fontWeight: 'bold', textAlign: 'center' },
-  divider: { height: 1, backgroundColor: '#333', marginVertical: 12 },
+  thumbnail: { width: 56, height: 56, borderRadius: 28, marginRight: 15, backgroundColor: '#27272A', borderWidth: 2, borderColor: '#10B981' },
+  logName: { color: '#ffffff', fontWeight: '900', fontSize: 18, letterSpacing: 0.5 },
+  logDate: { color: '#A1A1AA', fontSize: 12, marginTop: 4, fontWeight: '700' },
+  violationBadge: { backgroundColor: 'rgba(239, 68, 68, 0.1)', padding: 12, borderRadius: 8, marginTop: 15, borderWidth: 1, borderColor: '#EF4444' },
+  violationText: { color: '#EF4444', fontSize: 12, fontWeight: '900', textAlign: 'center' },
+  historyBox: { backgroundColor: 'rgba(255, 138, 101, 0.1)', padding: 12, borderRadius: 8, marginTop: 10, borderWidth: 1, borderColor: 'rgba(255, 138, 101, 0.3)' },
+  historyTitle: { color: '#FF8A65', fontSize: 12, fontWeight: '900', marginBottom: 5, letterSpacing: 0.5 },
+  historyItem: { color: '#D4D4D8', fontSize: 11, fontStyle: 'italic', marginBottom: 3 },
+  divider: { height: 1, backgroundColor: '#27272A', marginVertical: 15 },
   timeRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  timeBlock: { flex: 1, alignItems: 'center', paddingVertical: 5 },
-  timeLabel: { color: '#666', fontSize: 10, fontWeight: 'bold', marginBottom: 4 },
-  timeVal: { color: '#fff', fontSize: 14, fontWeight: 'bold' },
+  timeBlock: { flex: 1, alignItems: 'center', paddingVertical: 8, backgroundColor: '#27272A', borderRadius: 12, marginHorizontal: 4 },
+  timeLabel: { color: '#A1A1AA', fontSize: 10, fontWeight: '900', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 },
+  timeVal: { color: '#ffffff', fontSize: 15, fontWeight: '900' },
   footerRow: { marginTop: 15, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  statusBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6 },
-  statusText: { color: '#000', fontSize: 11, fontWeight: 'bold' },
-  miniDelete: { padding: 5, borderWidth: 1, borderColor: '#FF5252', borderRadius: 4 },
+  statusBadge: { paddingHorizontal: 15, paddingVertical: 8, borderRadius: 8 },
+  statusText: { color: '#000000', fontSize: 12, fontWeight: '900', letterSpacing: 0.5 },
+  miniDelete: { paddingVertical: 8, paddingHorizontal: 12, borderWidth: 1, borderColor: '#EF4444', borderRadius: 8, backgroundColor: 'rgba(239, 68, 68, 0.1)' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center' },
-  modalContent: { width: '85%', backgroundColor: '#1E1E1E', borderRadius: 20, padding: 25, borderWidth: 1, borderColor: '#333' },
-  modalTitle: { color: '#00E676', fontSize: 20, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
-  userOption: { paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#333' },
-  userOptionText: { color: '#fff', fontSize: 16 },
-  statusOption: { paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: '#333', alignItems: 'center' },
-  statusOptionText: { fontSize: 18, fontWeight: 'bold' },
-  closeBtn: { marginTop: 15, alignItems: 'center' },
-  closeBtnText: { color: '#FF5252', fontWeight: 'bold' }
+  modalContent: { width: '85%', backgroundColor: '#18181B', borderRadius: 24, padding: 25, borderWidth: 1, borderColor: '#27272A' },
+  modalTitle: { color: '#10B981', fontSize: 22, fontWeight: '900', marginBottom: 25, textAlign: 'center', letterSpacing: 0.5 },
+  userOption: { paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: '#27272A' },
+  userOptionText: { color: '#F4F4F5', fontSize: 17, fontWeight: '700' },
+  statusOption: { paddingVertical: 20, borderBottomWidth: 1, borderBottomColor: '#27272A', alignItems: 'center' },
+  statusOptionText: { fontSize: 18, fontWeight: '900' },
+  closeBtn: { marginTop: 25, alignItems: 'center', backgroundColor: '#EF4444', padding: 15, borderRadius: 12 },
+  closeBtnText: { color: '#ffffff', fontWeight: '900', letterSpacing: 1 }
 });

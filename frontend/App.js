@@ -6,7 +6,7 @@ import {
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
-import { api } from './src/api/client';
+import { api, setLogoutCallback } from './src/api/client';
 
 // Screens
 import LoginScreen from './src/screens/LoginScreen';
@@ -39,10 +39,14 @@ export default function App() {
 
   const slideAnim = useRef(new Animated.Value(-SIDEBAR_WIDTH)).current;
 
-  useEffect(() => { checkStatus(); }, []);
+  useEffect(() => { 
+    checkStatus(); 
+    setLogoutCallback(handleLogout);
+  }, []);
 
   useEffect(() => {
     if (isLoggedIn && userRole === 'user') {
+      requestLocationPermission();
       syncDutyAndLocation();
       const interval = setInterval(syncDutyAndLocation, 5000);
       return () => {
@@ -51,6 +55,17 @@ export default function App() {
       };
     }
   }, [isLoggedIn, userRole]);
+
+  const requestLocationPermission = async () => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        console.log('Location permission not granted:', status);
+      }
+    } catch (e) {
+      console.log('requestLocationPermission error:', e.message);
+    }
+  };
 
   const checkStatus = async () => {
     const token = await AsyncStorage.getItem('userToken');
@@ -69,18 +84,8 @@ export default function App() {
 
       const { status: permStatus } = await Location.getForegroundPermissionsAsync();
       const isServicesEnabled = await Location.hasServicesEnabledAsync();
-      
-      let isLocationFunctioning = false;
-      if (permStatus === 'granted' && isServicesEnabled) {
-          try {
-              const lastLoc = await Location.getLastKnownPositionAsync();
-              if (lastLoc) isLocationFunctioning = true;
-          } catch (err) {
-              isLocationFunctioning = false;
-          }
-      }
 
-      const isGranted = permStatus === 'granted' && isServicesEnabled && isLocationFunctioning;
+      const isGranted = permStatus === 'granted' && isServicesEnabled;
       setLocationPermission(isGranted);
       
       // --- CRITICAL RECOVERY LOGIC ---
@@ -141,28 +146,39 @@ export default function App() {
 
   const handleFixNow = async () => {
     try {
-      const { status: permStatus } = await Location.getForegroundPermissionsAsync();
-      if (permStatus !== 'granted') {
-        Alert.alert("Permission Required", "Location access is set to 'Denied'.",
-          [{ text: "Go to Settings", onPress: () => Linking.openSettings() }, { text: "Cancel" }]
+      let { status } = await Location.getForegroundPermissionsAsync();
+
+      // If not granted, actively request permission (shows Android dialog)
+      if (status !== 'granted') {
+        const result = await Location.requestForegroundPermissionsAsync();
+        status = result.status;
+      }
+
+      if (status !== 'granted') {
+        // Still denied — send to app settings
+        Alert.alert(
+          "Permission Denied",
+          "Location access was denied. Please enable it in App Settings.",
+          [{ text: "Open Settings", onPress: () => Linking.openSettings() }, { text: "Cancel" }]
         );
         return;
       }
+
       const isServicesEnabled = await Location.hasServicesEnabledAsync();
       if (!isServicesEnabled) {
         if (Platform.OS === 'android') {
-          try { await Location.enableNetworkProviderAsync(); } 
-          catch (e) { Alert.alert("GPS Off", "Please enable Location."); }
+          try { await Location.enableNetworkProviderAsync(); }
+          catch (e) { Alert.alert("GPS Off", "Please turn on Location/GPS from your notification shade."); }
         } else {
           Alert.alert("GPS Off", "Please enable Location in device settings.");
         }
       } else {
-        // RESET Terminated state immediately upon manual fix
+        // Permission granted + GPS on: update state directly so banner clears immediately
+        setLocationPermission(true);
         setIsTerminated(false);
         await stopGracePeriod();
-        syncDutyAndLocation();
       }
-    } catch (error) { console.log(error); }
+    } catch (error) { console.log('handleFixNow error:', error); }
   };
 
   const formatGraceTime = (sec) => `${Math.floor(sec / 60)}m ${sec % 60}s`;
@@ -174,11 +190,18 @@ export default function App() {
   };
 
   const handleLogout = async () => {
-    try { await api.post('/attendance/stop-duty'); } 
-    catch (e) { console.log("Logout cleanup failed"); } 
-    finally {
+    try {
+      const token = await AsyncStorage.getItem('userToken');
+      // Only hit the backend if we actually have a token to tell it we are stopping duty
+      if (token) {
+        await api.post('/attendance/stop-duty'); 
+      }
+    } catch (e) { 
+      console.log("Logout cleanup failed (ignored)"); 
+    } finally {
       await stopGracePeriod();
-      await AsyncStorage.clear();
+      await AsyncStorage.removeItem('userToken');
+      await AsyncStorage.removeItem('userRole');
       setIsLoggedIn(false);
       setUserRole(null);
       setIsOpen(false);

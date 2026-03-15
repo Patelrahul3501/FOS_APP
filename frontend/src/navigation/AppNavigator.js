@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
+import Constants from 'expo-constants';
 import { api } from '../api/client';
 
 const { width, height } = Dimensions.get('window');
@@ -15,6 +16,8 @@ export default function SimpleSidebar({ children, onLogout, onNavigate, userRole
   const slideAnim = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
 
   const [locationPermission, setLocationPermission] = useState(true);
+  const [locationErrorType, setLocationErrorType] = useState('none'); // 'permission' or 'services'
+  const [debugStatus, setDebugStatus] = useState('');
   const [graceSeconds, setGraceSeconds] = useState(300);
   const graceTimerRef = useRef(null);
 
@@ -32,14 +35,27 @@ export default function SimpleSidebar({ children, onLogout, onNavigate, userRole
   const checkLocationSilently = async () => {
     try {
       let { status: permStatus } = await Location.getForegroundPermissionsAsync();
+      let { status: bgStatus } = await Location.getBackgroundPermissionsAsync();
       let isServicesEnabled = await Location.hasServicesEnabledAsync();
-      const isGranted = permStatus === 'granted' && isServicesEnabled;
+      
+      const isExpoGo = Platform.OS === 'android' && (Constants.appOwnership === 'expo' || Constants.appOwnership === 'guest');
+      const bgGrantedOrBypassed = bgStatus === 'granted' || isExpoGo;
 
+      setDebugStatus(`FG:${permStatus}, BG:${bgStatus}${isExpoGo ? ' (EXPO GO)' : ''}`);
+      const isGranted = permStatus === 'granted' && bgGrantedOrBypassed && isServicesEnabled;
       setLocationPermission(isGranted);
 
       if (!isGranted) {
+        if (permStatus !== 'granted') {
+          setLocationErrorType('foreground');
+        } else if (!bgGrantedOrBypassed) {
+          setLocationErrorType('background');
+        } else {
+          setLocationErrorType('services');
+        }
         handleGracePeriod();
       } else {
+        setLocationErrorType('none');
         if (graceTimerRef.current) stopGracePeriod();
       }
     } catch (e) { console.log(e); }
@@ -80,12 +96,59 @@ export default function SimpleSidebar({ children, onLogout, onNavigate, userRole
   };
 
   const handleManualFix = async () => {
-    const { status } = await Location.requestForegroundPermissionsAsync();
-    if (status === 'granted') {
-      stopGracePeriod();
-      setLocationPermission(true);
-    } else {
-      Linking.openSettings();
+    try {
+      if (locationErrorType === 'permission') {
+        // Step 1: Request foreground permission
+        const { status: fgStatus } = await Location.requestForegroundPermissionsAsync();
+        if (fgStatus === 'granted') {
+          // Step 2: Request background permission (Always Allow)
+          const { status: bgStatus } = await Location.requestBackgroundPermissionsAsync();
+          if (bgStatus !== 'granted') {
+            Alert.alert(
+              "Background Location Required",
+              'Please select "Allow all the time" (Always Allow) for location so the app can track your duty in the background.',
+              [
+                { text: "Cancel", style: "cancel" },
+                { text: "Open Settings", onPress: () => Linking.openSettings() }
+              ]
+            );
+            return;
+          }
+          const isServicesEnabled = await Location.hasServicesEnabledAsync();
+          if (isServicesEnabled) {
+            setLocationErrorType('none');
+            setLocationPermission(true);
+            stopGracePeriod();
+          } else {
+            setLocationErrorType('services');
+          }
+        } else {
+          Alert.alert(
+            "Permission Denied",
+            "Please go to App Settings and grant Location permission (Always Allow).",
+            [
+              { text: "Cancel", style: "cancel" },
+              { text: "Open Settings", onPress: () => Linking.openSettings() }
+            ]
+          );
+        }
+      } else if (locationErrorType === 'services') {
+        if (Platform.OS === 'android') {
+          try {
+            await Location.enableNetworkProviderAsync();
+            const recheck = await Location.hasServicesEnabledAsync();
+            if (recheck) {
+              setLocationPermission(true);
+              setLocationErrorType('none');
+              stopGracePeriod();
+              return;
+            }
+          } catch(err) { console.log(err); }
+        }
+        Alert.alert("GPS Turned Off", "Please pull down your screen and turn on the Location/GPS toggle.");
+      }
+    } catch (e) {
+      console.log("Error fixing location:", e);
     }
   };
 
@@ -111,15 +174,19 @@ export default function SimpleSidebar({ children, onLogout, onNavigate, userRole
         {/* FIX: Banner is now ABSOLUTELY positioned at the very top of the stack */}
         {!locationPermission && userRole === 'user' && (
           <TouchableOpacity 
-            style={styles.globalBanner} 
+            style={[styles.globalBanner, locationErrorType === 'services' && { backgroundColor: '#FF8A65' }]} 
             onPress={handleManualFix}
             activeOpacity={0.9}
           >
             <Text style={styles.bannerText}>
-              ⚠️ <Text style={{fontWeight: '900'}}>LOCATION REQUIRED</Text>: {formatGraceTime(graceSeconds)}
+              ⚠️ <Text style={{fontWeight: '900'}}>
+                {locationErrorType === 'services' ? 'TURN ON DEVICE GPS' : 
+                 locationErrorType === 'foreground' ? 'APP PERMISSION REQUIRED' : 
+                 'ENABLE ALWAYS ALLOW'}
+              </Text>: {formatGraceTime(graceSeconds)} ({debugStatus})
             </Text>
             <View style={styles.bannerFixBtn}>
-              <Text style={styles.bannerFixText}>ENABLE</Text>
+              <Text style={styles.bannerFixText}>{locationErrorType === 'services' ? 'TURN ON' : 'ENABLE'}</Text>
             </View>
           </TouchableOpacity>
         )}

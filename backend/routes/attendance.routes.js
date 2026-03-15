@@ -7,7 +7,8 @@ import {
   checkOut ,
   resumeDuty,
   stopDuty,
-  updateLocation
+  updateLocation,
+  isHoliday
 } from '../controllers/attendance.controller.js';
 import { protect } from '../middleware/auth.middleware.js';
 
@@ -23,6 +24,7 @@ router.post('/check-in', protect, checkIn);
 router.post('/check-out', protect, checkOut);
 router.get('/status', protect, checkStatus);
 router.get('/history', protect, getAttendanceHistory);
+router.get('/is-holiday', protect, isHoliday);
 
 router.post('/update-location', protect, updateLocation);
 

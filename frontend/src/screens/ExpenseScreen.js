@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import { api } from '../api/client';
+import SkeletonLoader from '../components/SkeletonLoader';
 
 export default function ExpenseScreen() {
   const [expenses, setExpenses] = useState([]);
@@ -145,7 +146,7 @@ export default function ExpenseScreen() {
       </View>
 
       {fetching ? (
-        <ActivityIndicator color="#00E676" />
+        <SkeletonLoader type="list" />
       ) : (
         <FlatList
           data={currentMonthExpenses}
@@ -193,33 +194,39 @@ export default function ExpenseScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#121212', paddingHorizontal: 20, paddingTop: 20 },
-  header: { color: '#fff', fontSize: 24, fontWeight: 'bold', textAlign: 'center' },
-  subHeader: { color: '#00E676', textAlign: 'center', marginBottom: 20, fontSize: 14, fontWeight: '600' },
-  form: { backgroundColor: '#1E1E1E', padding: 18, borderRadius: 15, marginBottom: 25, borderWidth: 1, borderColor: '#333' },
-  formHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  container: { flex: 1, backgroundColor: '#0A0A0A', paddingHorizontal: 20, paddingTop: 20 },
+  header: { color: '#ffffff', fontSize: 26, fontWeight: '900', textAlign: 'center', letterSpacing: 0.5 },
+  subHeader: { color: '#10B981', textAlign: 'center', marginBottom: 25, fontSize: 13, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1 },
+  form: { 
+    backgroundColor: '#18181B', padding: 22, borderRadius: 24, marginBottom: 25, borderWidth: 1, borderColor: '#27272A',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 15, elevation: 8
+  },
+  formHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
   disabledForm: { opacity: 0.6 },
-  dutyWarning: { color: '#FF5252', fontSize: 10, fontWeight: 'bold' },
-  label: { color: '#00E676', fontSize: 11, fontWeight: 'bold', textTransform: 'uppercase' },
-  input: { backgroundColor: '#121212', color: '#fff', padding: 12, borderRadius: 10, marginBottom: 12, borderWidth: 1, borderColor: '#333' },
-  disabledInput: { backgroundColor: '#1A1A1A', borderColor: '#222', color: '#444' },
-  saveBtn: { backgroundColor: '#00E676', padding: 15, borderRadius: 10, alignItems: 'center' },
-  disabledBtn: { backgroundColor: '#333' },
-  saveBtnText: { color: '#000', fontWeight: 'bold' },
-  cancelLink: { color: '#FF5252', textAlign: 'center', marginTop: 10, fontSize: 12 },
+  dutyWarning: { color: '#EF4444', fontSize: 10, fontWeight: '900', letterSpacing: 0.5 },
+  label: { color: '#10B981', fontSize: 12, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1 },
+  input: { backgroundColor: '#27272A', color: '#F4F4F5', padding: 15, borderRadius: 14, marginBottom: 15, borderWidth: 1, borderColor: '#3F3F46' },
+  disabledInput: { backgroundColor: '#18181B', borderColor: '#27272A', color: '#71717A' },
+  saveBtn: { 
+    backgroundColor: '#10B981', padding: 16, borderRadius: 14, alignItems: 'center',
+    shadowColor: '#10B981', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 10, elevation: 6
+  },
+  disabledBtn: { backgroundColor: '#27272A', shadowOpacity: 0 },
+  saveBtnText: { color: '#064E3B', fontWeight: '900', letterSpacing: 0.5 },
+  cancelLink: { color: '#EF4444', textAlign: 'center', marginTop: 15, fontSize: 13, fontWeight: '700' },
   listHeader: { marginBottom: 15 },
-  listTitle: { color: '#888', fontSize: 13, fontWeight: 'bold' },
-  card: { backgroundColor: '#1E1E1E', padding: 15, borderRadius: 15, marginBottom: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderWidth: 0.5, borderColor: '#333' },
-  itemTitle: { color: '#fff', fontSize: 16, fontWeight: '500' },
-  itemDate: { color: '#555', fontSize: 11, marginTop: 4 },
+  listTitle: { color: '#A1A1AA', fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1 },
+  card: { backgroundColor: '#18181B', padding: 18, borderRadius: 20, marginBottom: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderColor: '#27272A' },
+  itemTitle: { color: '#ffffff', fontSize: 17, fontWeight: '700', letterSpacing: 0.3 },
+  itemDate: { color: '#71717A', fontSize: 12, marginTop: 4, fontWeight: '600' },
   rightSide: { alignItems: 'flex-end' },
-  itemAmount: { color: '#00E676', fontWeight: 'bold', fontSize: 18, marginBottom: 5 },
+  itemAmount: { color: '#10B981', fontWeight: '900', fontSize: 19, marginBottom: 6 },
   row: { flexDirection: 'row', alignItems: 'center' },
-  edit: { color: '#FFA000', marginRight: 15, fontSize: 11 },
-  delete: { color: '#FF5252', fontSize: 11 },
-  emptyText: { color: '#444', textAlign: 'center', marginTop: 20 },
-  totalFooter: { backgroundColor: '#00E676', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, borderRadius: 15, marginTop: 10, marginBottom: 50 },
-  totalLabel: { color: '#000', fontSize: 16, fontWeight: 'bold' },
-  monthLabel: { color: '#000', fontSize: 10, opacity: 0.6, fontWeight: 'bold' },
-  totalValue: { color: '#000', fontSize: 22, fontWeight: '900' }
+  edit: { color: '#FBBF24', marginRight: 15, fontSize: 12, fontWeight: '800' },
+  delete: { color: '#EF4444', fontSize: 12, fontWeight: '800' },
+  emptyText: { color: '#71717A', textAlign: 'center', marginTop: 20, fontStyle: 'italic' },
+  totalFooter: { backgroundColor: 'rgba(16, 185, 129, 0.1)', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 22, borderRadius: 24, marginTop: 10, marginBottom: 50, borderWidth: 1, borderColor: '#10B981' },
+  totalLabel: { color: '#10B981', fontSize: 14, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1 },
+  monthLabel: { color: '#10B981', fontSize: 11, fontWeight: '800', marginTop: 4, opacity: 0.8 },
+  totalValue: { color: '#10B981', fontSize: 26, fontWeight: '900' }
 });

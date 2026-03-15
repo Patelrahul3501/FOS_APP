@@ -1,6 +1,9 @@
 import User from '../models/User.js';
 import Attendance from '../models/Attendance.js';
 import Expense from '../models/Expense.js';
+import Log from '../models/Log.js';
+import Holiday from '../models/Holiday.js';
+import { logActivity } from '../utils/logger.js';
 
 /**
  * 1. ADMIN SUMMARY
@@ -13,10 +16,10 @@ export const getAdminSummary = async (req, res) => {
     const today = new Date().toISOString().split('T')[0];
 
     // 1. Find all attendance records for today
-    // Added 'lat', 'lng', and 'updatedAt' to the selection
     const activeAttendance = await Attendance.find({ date: today })
       .populate('userId', 'name email phone') 
-      .select('checkInLocation checkInTime checkOutTime workHours userId selfie status lat lng updatedAt');
+      .select('checkInLocation checkInTime checkOutTime workHours userId selfie status lat lng updatedAt')
+      .lean();
 
     // 2. Fetch expenses in parallel
     const activeLocations = await Promise.all(activeAttendance.map(async (item) => {
@@ -26,7 +29,7 @@ export const getAdminSummary = async (req, res) => {
           $gte: new Date(today), 
           $lt: new Date(new Date(today).getTime() + 24 * 60 * 60 * 1000) 
         }
-      });
+      }).lean();
       
       const totalSpent = dailyExpenses.reduce((sum, exp) => sum + Number(exp.amount), 0);
 
@@ -124,7 +127,9 @@ export const getAttendanceLogs = async (req, res) => {
     const logs = await Attendance.find(query)
       .populate('userId', 'name email phone') 
       .select('userId date checkInTime checkOutTime checkInLocation selfie status workHours') 
-      .sort({ date: -1 });
+      .sort({ date: -1 })
+      .limit(300)
+      .lean();
 
     res.json(logs);
   } catch (error) { res.status(500).json({ message: error.message }); }
@@ -135,7 +140,7 @@ export const getAttendanceLogs = async (req, res) => {
  */
 export const getAllUsers = async (req, res) => {
   try {
-    const users = await User.find({ role: 'user' }).select('-password');
+    const users = await User.find({ role: 'user' }).select('-password').lean();
     res.json(users);
   } catch (error) { res.status(500).json({ message: error.message }); }
 };
@@ -152,13 +157,21 @@ export const updateUser = async (req, res) => {
     if (password && password.trim() !== "") { user.password = password; }
     
     await user.save();
+    
+    // Log the action (Admin updating an officer profile)
+    await logActivity(req.user.id, 'Update Profile', `Admin updated profile for user: ${user.name}`);
+    
     res.json({ message: "User updated successfully" });
   } catch (error) { res.status(500).json({ message: error.message }); }
 };
 
 export const deleteUser = async (req, res) => {
   try {
-    await User.findByIdAndDelete(req.params.id);
+    const user = await User.findById(req.params.id);
+    if(user) {
+        await User.findByIdAndDelete(req.params.id);
+        await logActivity(req.user.id, 'Delete Profile', `Admin deleted user profile: ${user.name}`);
+    }
     res.json({ message: "User removed successfully" });
   } catch (error) { res.status(500).json({ message: error.message }); }
 };
@@ -177,7 +190,7 @@ export const getExpenseLogs = async (req, res) => {
         $lte: new Date(new Date(end).setHours(23, 59, 59)) 
       };
     }
-    const logs = await Expense.find(query).populate('userId', 'name phone').sort({ date: -1 });
+    const logs = await Expense.find(query).populate('userId', 'name phone').sort({ date: -1 }).limit(300).lean();
     res.json(logs);
   } catch (error) { res.status(500).json({ message: error.message }); }
 };
@@ -216,4 +229,79 @@ export const deleteAttendance = async (req, res) => {
     await Attendance.findByIdAndDelete(req.params.id);
     res.json({ message: "Attendance record deleted" });
   } catch (error) { res.status(500).json({ message: error.message }); }
+};
+
+/**
+ * 7. SYSTEM LOGS
+ */
+export const getSystemLogs = async (req, res) => {
+  try {
+    const { userId, start, end } = req.query;
+    let query = {};
+    
+    if (userId && userId !== '') {
+      query.user = userId;
+    }
+    
+    // Default to today if no dates provided
+    const todayStr = new Date().toISOString().split('T')[0];
+    const startDate = start ? new Date(start) : new Date(todayStr);
+    const endDate = end ? new Date(new Date(end).setHours(23, 59, 59)) : new Date(new Date(todayStr).setHours(23, 59, 59));
+    
+    query.createdAt = {
+      $gte: startDate,
+      $lte: endDate
+    };
+
+    const logs = await Log.find(query)
+      .populate('user', 'name phone')
+      .sort({ createdAt: -1 })
+      .limit(200) // Increased limit as they might filter a large range
+      .lean();
+    res.status(200).json(logs);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const deleteSystemLog = async (req, res) => {
+  try {
+    await Log.findByIdAndDelete(req.params.id);
+    res.status(200).json({ message: "Log removed" });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+/**
+ * 8. HOLIDAY MANAGEMENT
+ */
+export const getHolidays = async (req, res) => {
+  try {
+    const holidays = await Holiday.find().sort({ date: 1 });
+    res.status(200).json(holidays);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const addHoliday = async (req, res) => {
+  try {
+    const { date, name } = req.body;
+    const newHoliday = new Holiday({ date, name });
+    await newHoliday.save();
+    res.status(201).json(newHoliday);
+  } catch (error) {
+    if (error.code === 11000) return res.status(400).json({ message: "Holiday already exists for this date" });
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const deleteHoliday = async (req, res) => {
+  try {
+    await Holiday.findByIdAndDelete(req.params.id);
+    res.status(200).json({ message: "Holiday removed" });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
 };

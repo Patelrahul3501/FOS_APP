@@ -62,3 +62,13 @@ export const register = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+
+export const updateProfilePhoto = async (req, res) => {
+  try {
+    const { photo } = req.body;
+    await User.findByIdAndUpdate(req.user.id, { profilePhoto: photo });
+    res.json({ message: "Profile photo updated" });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};

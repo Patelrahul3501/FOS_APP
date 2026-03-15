@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   View, Text, StyleSheet, TouchableOpacity, Alert, 
-  ScrollView, Image, ActivityIndicator, AppState 
+  ScrollView, Image, ActivityIndicator, AppState, Linking, Platform 
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
+import Constants from 'expo-constants';
 import MapView, { Marker } from 'react-native-maps'; 
 import { api } from '../api/client';
 
@@ -24,7 +25,7 @@ export default function UserDashboard() {
   const syncTimerRef = useRef(null);
   const appState = useRef(AppState.currentState);
 
-  // 1. DYNAMIC PERMISSION & APP STATE LISTENER
+  // 1. APP STATE LISTENER — refresh when app comes to foreground
   useEffect(() => {
     refreshDashboard();
 
@@ -35,29 +36,14 @@ export default function UserDashboard() {
       appState.current = nextAppState;
     });
 
-    const interval = setInterval(checkLocationPermission, 3000);
-
     return () => {
       subscription.remove();
-      clearInterval(interval);
     };
   }, []);
-
-  const checkLocationPermission = async () => {
-    let { status: permStatus } = await Location.getForegroundPermissionsAsync();
-    let isServicesEnabled = await Location.hasServicesEnabledAsync();
-    const isGranted = permStatus === 'granted' && isServicesEnabled;
-    
-    if (isGranted && !locationPermission) {
-        refreshDashboard();
-    }
-    setLocationPermission(isGranted);
-  };
 
   const refreshDashboard = () => {
     checkTodayAttendance();
     fetchTodayExpenses();
-    checkLocationPermission();
   };
 
   // 2. SERVER SYNC LOGIC
@@ -152,17 +138,89 @@ export default function UserDashboard() {
   };
 
   const handleAttendance = async () => {
-    if (!locationPermission) return Alert.alert("Blocked", "Fix location settings.");
+    const { status: fgStatus } = await Location.getForegroundPermissionsAsync();
+    const { status: bgStatus } = await Location.getBackgroundPermissionsAsync();
+    const isServicesEnabled = await Location.hasServicesEnabledAsync();
+    
+    const isExpoGo = Platform.OS === 'android' && (Constants.appOwnership === 'expo' || Constants.appOwnership === 'guest');
+    
+    console.log("Permission Status:", { fgStatus, bgStatus, isServicesEnabled, isExpoGo });
+
+    const bgGrantedOrBypassed = bgStatus === 'granted' || isExpoGo;
+
+    if (!isServicesEnabled) {
+      if (Platform.OS === 'android') {
+        try { await Location.enableNetworkProviderAsync(); } 
+        catch (e) { return Alert.alert("GPS Off", "Please turn on Location/GPS from your notification shade."); }
+      } else {
+        return Alert.alert("GPS Off", "Please enable Location in your device settings.");
+      }
+    } else if (fgStatus !== 'granted' && !bgGrantedOrBypassed) {
+      return Alert.alert(
+        "Location Permissions Required", 
+        "Both standard location and 'Always Allow' background location permissions are required to punch in.",
+        [{ text: "OK" }, { text: "Open Settings", onPress: () => Linking.openSettings() }]
+      );
+    } else if (fgStatus !== 'granted') {
+      return Alert.alert(
+        "Permission Required", 
+        "Standard (foreground) location permission is required to punch in.",
+        [{ text: "OK" }, { text: "Open Settings", onPress: () => Linking.openSettings() }]
+      );
+    } else if (!bgGrantedOrBypassed) {
+      const msg = isExpoGo 
+        ? "⚠️ EXPO GO LIMITATION: Background location is not supported. Use a Development Build." 
+        : "Please ensure 'Allow all the time' (Always Allow) is selected in Settings.";
+      return Alert.alert(
+        "Background Location Required", 
+        msg,
+        [{ text: "OK" }, { text: "Open Settings", onPress: () => Linking.openSettings() }]
+      );
+    }
+    // Users can now punch in even if their last session was terminated, wait, check logic:
+    // Actually, "Punch In" should not be available if they're Terminated (because they should use "Resume Duty" instead until their full day is done).
+    if (status === 'Terminated') {
+      return Alert.alert("Session Terminated", "Your session was terminated. Please use the 'RESUME DUTY' button below your details to clock back in.");
+    }
+    
+    // NEW: Check for Holiday before Punching In
+    if (status === 'none') {
+      try {
+        const holidayRes = await api.get('/attendance/is-holiday');
+        if (holidayRes.data.isHoliday) {
+          return Alert.alert(
+            "Holiday Warning 🌴",
+            `Today is marked as a holiday: ${holidayRes.data.name}.\nAre you sure you want to punch in?`,
+            [
+              { text: "Cancel", style: "cancel" },
+              { text: "Punch In Anyway", style: "destructive", onPress: () => proceedWithAttendance() }
+            ]
+          );
+        }
+      } catch (e) { console.log("Holiday check failed", e); }
+    }
+
+    proceedWithAttendance();
+  };
+
+  const proceedWithAttendance = async () => {
     const camPerm = await ImagePicker.requestCameraPermissionsAsync();
     if (!camPerm.granted) return Alert.alert("Error", "Camera required");
     
     setLoading(true);
     try {
-      let currentLoc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+      // FIX 1: Try to get last known immediately. If null (first time), fall back to getting current with balanced accuracy.
+      // This eliminates the 5-10 second GPS satellite lock delay on newer devices.
+      let currentLoc = await Location.getLastKnownPositionAsync({});
+      if (!currentLoc) {
+          currentLoc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      }
+      
+      // FIX 2: Compress selfie further (0.2 instead of 0.4) to halve the base64 string size for faster network transfer
       let result = await ImagePicker.launchCameraAsync({ 
         cameraType: ImagePicker.CameraType.front, 
         allowsEditing: true, 
-        quality: 0.4, 
+        quality: 0.2, 
         base64: true 
       });
       
@@ -214,25 +272,61 @@ export default function UserDashboard() {
                   <Text style={styles.timeDetail}>Worked: {workHours}h</Text>
               </View>
               
-              {/* FIXED RECOVERY LOGIC: Resume is now available for 'Terminated' status sessions 
-                  provided the work hours haven't hit the 8.5h shift requirement. */}
-              {(status === 'Terminated' || parseFloat(workHours) < 8.5) && status !== 'Present' ? (
+              {/* Show RESUME if session is paused or terminated, but not entirely 'Present' */}
+              {parseFloat(workHours) < 8.5 && status !== 'Present' ? (
                 <TouchableOpacity 
-                  style={[styles.resumeBtn, !locationPermission && {borderColor: '#444'}]} 
+                  style={styles.resumeBtn}
                   onPress={async () => {
-                    if(!locationPermission) return Alert.alert("Error", "Enable location first.");
+                    const { status: fgStatus } = await Location.getForegroundPermissionsAsync();
+                    const { status: bgStatus } = await Location.getBackgroundPermissionsAsync();
+                    const isServicesEnabled = await Location.hasServicesEnabledAsync();
+                    
+                    const isExpoGo = Platform.OS === 'android' && (Constants.appOwnership === 'expo' || Constants.appOwnership === 'guest');
+                    
+                    const bgGrantedOrBypassed = bgStatus === 'granted' || isExpoGo;
+
+                    if (!isServicesEnabled) {
+                      if (Platform.OS === 'android') {
+                        try { await Location.enableNetworkProviderAsync(); } 
+                        catch (e) { return Alert.alert("GPS Off", "Please turn on Location/GPS from your notification shade."); }
+                      } else {
+                        return Alert.alert("GPS Off", "Please enable Location in your device settings.");
+                      }
+                    } else if (fgStatus !== 'granted' && !bgGrantedOrBypassed) {
+                      return Alert.alert(
+                        "Location Permissions Required", 
+                        "Both standard location and 'Always Allow' background location permissions are required to resume duty.",
+                        [{ text: "OK" }, { text: "Open Settings", onPress: () => Linking.openSettings() }]
+                      );
+                    } else if (fgStatus !== 'granted') {
+                      return Alert.alert(
+                        "Permission Required", 
+                        "Standard (foreground) location permission is required to resume duty.",
+                        [{ text: "OK" }, { text: "Open Settings", onPress: () => Linking.openSettings() }]
+                      );
+                    } else if (!bgGrantedOrBypassed) {
+                      const msg = isExpoGo 
+                        ? "⚠️ EXPO GO LIMITATION: Background location is not supported. Use a Development Build." 
+                        : "Please ensure 'Allow all the time' (Always Allow) is selected in Settings.";
+                      return Alert.alert(
+                        "Background Location Required", 
+                        msg,
+                        [{ text: "OK" }, { text: "Open Settings", onPress: () => Linking.openSettings() }]
+                      );
+                    }
+                    
                     try {
                       await api.post('/attendance/resume');
                       refreshDashboard();
                     } catch(err) { Alert.alert("Error", "Resume failed. Ensure GPS is active."); }
                   }}
                 >
-                    <Text style={[styles.resumeBtnText, !locationPermission && {color: '#444'}]}>RESUME DUTY</Text>
+                    <Text style={styles.resumeBtnText}>RESUME DUTY</Text>
                 </TouchableOpacity>
               ) : (
                 <View style={styles.completedMessage}>
                     <Text style={styles.completedText}>
-                        {status === 'Terminated' ? 'Duty terminated. No further actions allowed.' : 'Shift fully completed for today! 🏆'}
+                        {status === 'Terminated' ? '⛔ Duty terminated by system. No further actions allowed today.' : 'Shift fully completed for today! 🏆'}
                     </Text>
                 </View>
               )}
@@ -279,34 +373,45 @@ export default function UserDashboard() {
 }
 
 const styles = StyleSheet.create({
-  mainContainer: { flex: 1, backgroundColor: '#121212' },
-  title: { color: '#fff', fontSize: 24, fontWeight: 'bold', marginBottom: 20 },
-  card: { width: '92%', backgroundColor: '#1E1E1E', padding: 15, borderRadius: 20, marginBottom: 20 },
-  attendanceHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 20, marginBottom: 10 },
-  cardTitle: { color: '#00E676', fontSize: 11, fontWeight: 'bold', textTransform: 'uppercase' },
-  syncText: { color: '#666', fontSize: 10 },
-  mapContainer: { width: '100%', height: 200, borderRadius: 15, overflow: 'hidden', backgroundColor: '#222' },
+  mainContainer: { flex: 1, backgroundColor: '#0A0A0A' },
+  title: { color: '#ffffff', fontSize: 26, fontWeight: '800', marginBottom: 20, marginTop: 10, letterSpacing: 0.5 },
+  card: { 
+    width: '92%', backgroundColor: '#18181B', padding: 20, borderRadius: 24, marginBottom: 25,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.3, shadowRadius: 20, elevation: 10,
+    borderWidth: 1, borderColor: '#27272A'
+  },
+  attendanceHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 22, marginBottom: 15 },
+  cardTitle: { color: '#10B981', fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1 },
+  syncText: { color: '#71717A', fontSize: 10, fontWeight: '600' },
+  mapContainer: { width: '100%', height: 220, borderRadius: 18, overflow: 'hidden', backgroundColor: '#27272A' },
   map: { width: '100%', height: '100%' },
   mapError: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  button: { backgroundColor: '#00E676', padding: 18, borderRadius: 12, marginTop: 15, alignItems: 'center' },
-  buttonText: { fontWeight: 'bold', color: '#000' },
-  infoBox: { width: '100%', padding: 15, backgroundColor: '#252525', borderRadius: 12 },
-  timeLabelsRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
-  smallTime: { color: '#888', fontSize: 11, fontWeight: 'bold' },
-  progressBarBg: { width: '100%', height: 8, backgroundColor: '#444', borderRadius: 4 },
-  progressBarFill: { height: '100%', backgroundColor: '#00E676', borderRadius: 4 },
-  successBox: { alignItems: 'center', padding: 10 },
-  selfiePreview: { width: 80, height: 80, borderRadius: 40, marginBottom: 10, borderWidth: 2, borderColor: '#00E676' },
-  successText: { color: '#00E676', fontWeight: 'bold', fontSize: 18, marginBottom: 5 },
-  timeSummaryRow: { flexDirection: 'row', alignItems: 'center', marginTop: 5 },
-  timeDetail: { color: '#888', fontSize: 13 },
-  vDivider: { width: 1, height: 12, backgroundColor: '#444', marginHorizontal: 10 },
-  resumeBtn: { marginTop: 20, paddingVertical: 12, paddingHorizontal: 30, borderRadius: 10, borderWidth: 1, borderColor: '#00E676' },
-  resumeBtnText: { color: '#00E676', fontWeight: 'bold' },
-  completedMessage: { marginTop: 20, padding: 10, backgroundColor: '#252525', borderRadius: 10, width: '100%', alignItems: 'center' },
-  completedText: { color: '#888', fontSize: 12, fontStyle: 'italic', textAlign: 'center' },
-  summaryCard: { width: '92%', backgroundColor: '#1E1E1E', padding: 20, borderRadius: 15 },
+  button: { 
+    backgroundColor: '#10B981', padding: 18, borderRadius: 16, marginTop: 20, alignItems: 'center',
+    shadowColor: '#10B981', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.4, shadowRadius: 10, elevation: 8
+  },
+  buttonText: { fontWeight: '900', color: '#064E3B', fontSize: 16, letterSpacing: 0.5 },
+  infoBox: { width: '100%', padding: 18, backgroundColor: '#27272A', borderRadius: 16, marginBottom: 5 },
+  timeLabelsRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
+  smallTime: { color: '#A1A1AA', fontSize: 12, fontWeight: 'bold' },
+  progressBarBg: { width: '100%', height: 6, backgroundColor: '#3F3F46', borderRadius: 10, overflow: 'hidden' },
+  progressBarFill: { height: '100%', backgroundColor: '#10B981', borderRadius: 10 },
+  successBox: { alignItems: 'center', padding: 15 },
+  selfiePreview: { width: 90, height: 90, borderRadius: 45, marginBottom: 12, borderWidth: 3, borderColor: '#10B981' },
+  successText: { color: '#10B981', fontWeight: '800', fontSize: 18, marginBottom: 8 },
+  timeSummaryRow: { flexDirection: 'row', alignItems: 'center', marginTop: 8, backgroundColor: '#27272A', paddingVertical: 8, paddingHorizontal: 16, borderRadius: 12 },
+  timeDetail: { color: '#E4E4E7', fontSize: 14, fontWeight: '600' },
+  vDivider: { width: 1, height: 16, backgroundColor: '#52525B', marginHorizontal: 15 },
+  resumeBtn: { marginTop: 25, paddingVertical: 14, paddingHorizontal: 35, borderRadius: 12, borderWidth: 2, borderColor: '#10B981', backgroundColor: 'rgba(16, 185, 129, 0.1)' },
+  resumeBtnText: { color: '#10B981', fontWeight: '800', letterSpacing: 0.5 },
+  completedMessage: { marginTop: 25, padding: 15, backgroundColor: '#27272A', borderRadius: 12, width: '100%', alignItems: 'center', borderWidth: 1, borderColor: '#3F3F46' },
+  completedText: { color: '#A1A1AA', fontSize: 13, fontStyle: 'italic', textAlign: 'center', fontWeight: '600' },
+  summaryCard: { 
+    width: '92%', backgroundColor: '#18181B', padding: 25, borderRadius: 24, 
+    borderWidth: 1, borderColor: '#27272A', alignItems: 'center',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 15, elevation: 8
+  },
   summaryItem: { alignItems: 'center' },
-  summaryVal: { color: '#fff', fontSize: 24, fontWeight: 'bold' },
-  summaryLabel: { color: '#888', fontSize: 12 }
+  summaryVal: { color: '#10B981', fontSize: 32, fontWeight: '900', textShadowColor: 'rgba(16, 185, 129, 0.3)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 10 },
+  summaryLabel: { color: '#A1A1AA', fontSize: 13, marginTop: 4, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 }
 });
