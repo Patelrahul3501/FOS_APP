@@ -142,11 +142,11 @@ export default function UserDashboard() {
     const { status: bgStatus } = await Location.getBackgroundPermissionsAsync();
     const isServicesEnabled = await Location.hasServicesEnabledAsync();
     
-    const isExpoGo = Platform.OS === 'android' && (Constants.appOwnership === 'expo' || Constants.appOwnership === 'guest');
+    const isExpoGo = Constants.appOwnership === 'expo' || Constants.appOwnership === 'guest';
     
     console.log("Permission Status:", { fgStatus, bgStatus, isServicesEnabled, isExpoGo });
 
-    const bgGrantedOrBypassed = bgStatus === 'granted' || isExpoGo;
+    const bgGrantedOrBypassed = bgStatus === 'granted' || isExpoGo || Platform.OS === 'ios';
 
     if (!isServicesEnabled) {
       if (Platform.OS === 'android') {
@@ -183,8 +183,16 @@ export default function UserDashboard() {
       return Alert.alert("Session Terminated", "Your session was terminated. Please use the 'RESUME DUTY' button below your details to clock back in.");
     }
     
-    // NEW: Check for Holiday before Punching In
+    // NEW: Check for 9 PM Restriction before Punching In
     if (status === 'none') {
+      const currentHour = new Date().getHours();
+      if (currentHour >= 21) {
+        return Alert.alert(
+          "Access Denied 🕒",
+          "You cannot start your duty after 9:00 PM."
+        );
+      }
+      
       try {
         const holidayRes = await api.get('/attendance/is-holiday');
         if (holidayRes.data.isHoliday) {
@@ -277,13 +285,21 @@ export default function UserDashboard() {
                 <TouchableOpacity 
                   style={styles.resumeBtn}
                   onPress={async () => {
+                    const currentHour = new Date().getHours();
+                    if (currentHour >= 21) {
+                      return Alert.alert(
+                        "Access Denied 🕒",
+                        "Duty hours are over. You cannot resume your shift after 9:00 PM."
+                      );
+                    }
+                    
                     const { status: fgStatus } = await Location.getForegroundPermissionsAsync();
                     const { status: bgStatus } = await Location.getBackgroundPermissionsAsync();
                     const isServicesEnabled = await Location.hasServicesEnabledAsync();
                     
-                    const isExpoGo = Platform.OS === 'android' && (Constants.appOwnership === 'expo' || Constants.appOwnership === 'guest');
+                    const isExpoGo = Constants.appOwnership === 'expo' || Constants.appOwnership === 'guest';
                     
-                    const bgGrantedOrBypassed = bgStatus === 'granted' || isExpoGo;
+                    const bgGrantedOrBypassed = bgStatus === 'granted' || isExpoGo || Platform.OS === 'ios';
 
                     if (!isServicesEnabled) {
                       if (Platform.OS === 'android') {

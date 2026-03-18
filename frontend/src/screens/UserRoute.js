@@ -142,7 +142,7 @@ export default function UserRoute() {
             <View style={styles.iosPickerOverlay}>
               <View style={styles.iosPickerContainer}>
                 <TouchableOpacity style={styles.iosDoneBtn} onPress={() => setShowDatePicker(false)}>
-                  <Text style={styles.iosDoneText}>Done</Text>
+                  <Text style={styles.iosDoneText}>DONE</Text>
                 </TouchableOpacity>
                 <DateTimePicker value={date} mode="date" display="inline" onChange={onDateChange} maximumDate={new Date()} themeVariant="dark" />
               </View>
@@ -154,10 +154,12 @@ export default function UserRoute() {
       )}
 
       <View style={styles.filterCard}>
+        <Text style={styles.headerTitle}>Route Tracking</Text>
+        
         <View style={styles.inputGroup}>
           <Text style={styles.label}>OFFICER NAME</Text>
           <View style={styles.pickerWrapper}>
-            <Picker selectedValue={selectedUser} onValueChange={(val) => setSelectedUser(val)} style={styles.picker} dropdownIconColor="#00E676" mode="dropdown">
+            <Picker selectedValue={selectedUser} onValueChange={(val) => setSelectedUser(val)} style={styles.picker} dropdownIconColor="#10B981" mode="dropdown">
               <Picker.Item label="Select Officer" value="" color="#888" />
               {users.map(u => <Picker.Item key={u._id} label={u.name} value={u._id} color={Platform.OS === 'ios' ? "#fff" : "#000"} />)}
             </Picker>
@@ -165,16 +167,16 @@ export default function UserRoute() {
         </View>
 
         <View style={styles.actionRow}>
-          <View style={{ flex: 1.2, marginRight: 10 }}>
-            <Text style={styles.label}>DATE</Text>
-            <TouchableOpacity style={styles.dateBtn} onPress={() => setShowDatePicker(true)} activeOpacity={0.7}>
+          <View style={{ flex: 1.2, marginRight: 15 }}>
+            <Text style={styles.label}>TRACKING DATE</Text>
+            <TouchableOpacity style={styles.dateBtn} onPress={() => setShowDatePicker(true)} activeOpacity={0.8}>
               <Text style={styles.dateBtnText}>📅 {getLocalDateString(date)}</Text>
             </TouchableOpacity>
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.label}>ACTION</Text>
-            <TouchableOpacity style={[styles.fetchBtn, loading && { opacity: 0.7 }]} onPress={handleFetchRoute} disabled={loading}>
-              {loading ? <ActivityIndicator color="#000" size="small" /> : <Text style={styles.fetchText}>FETCH</Text>}
+            <TouchableOpacity style={[styles.fetchBtn, loading && { opacity: 0.7 }]} onPress={handleFetchRoute} disabled={loading} activeOpacity={0.8}>
+              {loading ? <ActivityIndicator color="#064E3B" size="small" /> : <Text style={styles.fetchText}>FETCH MAP</Text>}
             </TouchableOpacity>
           </View>
         </View>
@@ -184,41 +186,41 @@ export default function UserRoute() {
         {routeData.length > 0 ? (
           <>
             <MapView ref={mapRef} provider={PROVIDER_GOOGLE} style={StyleSheet.absoluteFillObject} initialRegion={region} key={routeData.length}>
-              <Polyline coordinates={routeData} strokeColor="#00E676" strokeWidth={5} lineJoin="round" />
-              <Marker coordinate={routeData[0]} title="START" pinColor="blue" description={`First sync: ${formatPointTime(firstSync)}`} />
-              <Marker coordinate={routeData[routeData.length - 1]} title="END" pinColor="red" description={`Last sync: ${formatPointTime(lastSync)}`} />
+              <Polyline coordinates={routeData} strokeColor="#10B981" strokeWidth={6} lineJoin="round" />
+              <Marker coordinate={routeData[0]} title="START" description={`Started at ${formatPointTime(firstSync)}`} pinColor="#3B82F6" />
+              <Marker coordinate={routeData[routeData.length - 1]} title="END" description={`Ended at ${formatPointTime(lastSync)}`} pinColor="#EF4444" />
               {playbackIdx !== null && (
                 <Marker coordinate={routeData[playbackIdx]}>
-                  <View style={styles.movingMarker}><Text style={{fontSize: 10}}>🚶</Text></View>
+                  <View style={styles.movingMarker}><Text style={{fontSize: 14}}>🏃</Text></View>
                 </Marker>
               )}
             </MapView>
 
-            <TouchableOpacity style={[styles.playBtn, isAnimating && {backgroundColor: '#444'}]} onPress={startPlayback} disabled={isAnimating}>
-              <Text style={styles.playText}>{isAnimating ? "ANIMATING..." : "▶ PLAY ROUTE"}</Text>
+            <TouchableOpacity style={[styles.playBtn, isAnimating && {backgroundColor: '#27272A'}]} onPress={startPlayback} disabled={isAnimating} activeOpacity={0.8}>
+              <Text style={[styles.playText, isAnimating && {color: '#71717A'}]}>{isAnimating ? "ANIMATING ROUTE..." : "▶ PLAY ROUTE"}</Text>
             </TouchableOpacity>
 
             <View style={styles.summaryBar}>
               <View style={styles.summaryItem}>
-                <Text style={styles.summaryLabel}>DISTANCE</Text>
+                <Text style={styles.summaryLabel}>TOTAL DISTANCE</Text>
                 <Text style={styles.summaryVal}>{distance} KM</Text>
               </View>
               <View style={styles.vDivider} />
               <View style={styles.summaryItem}>
                 <Text style={styles.summaryLabel}>FIRST SYNC</Text>
-                <Text style={styles.summaryVal}>{formatPointTime(firstSync)}</Text>
+                <Text style={styles.summaryValSub}>{formatPointTime(firstSync)}</Text>
               </View>
               <View style={styles.vDivider} />
               <View style={styles.summaryItem}>
                 <Text style={styles.summaryLabel}>LAST SYNC</Text>
-                <Text style={styles.summaryVal}>{formatPointTime(lastSync)}</Text>
+                <Text style={styles.summaryValSub}>{formatPointTime(lastSync)}</Text>
               </View>
             </View>
           </>
         ) : (
           <View style={styles.centerBox}>
-            {loading ? <ActivityIndicator size="large" color="#00E676" /> : 
-              <Text style={styles.initialText}>{hasFetched ? "No journey found." : "Choose filters and click Fetch."}</Text>}
+            {loading ? <ActivityIndicator size="large" color="#10B981" /> : 
+              <Text style={styles.initialText}>{hasFetched ? "No journey found on this date." : "Select an officer and date to track their route."}</Text>}
           </View>
         )}
       </View>
@@ -227,30 +229,40 @@ export default function UserRoute() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#121212' },
-  filterCard: { paddingTop: Platform.OS === 'ios' ? 60 : 20, paddingBottom: 20, backgroundColor: '#1A1A1A', paddingHorizontal: 20, borderBottomWidth: 1, borderBottomColor: '#333', zIndex: 100, elevation: 5 },
-  inputGroup: { marginBottom: 15 },
-  actionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  label: { color: '#888', fontSize: 10, fontWeight: 'bold', marginBottom: 8, letterSpacing: 1 },
-  pickerWrapper: { backgroundColor: '#252525', borderRadius: 12, borderWidth: 1, borderColor: '#333', height: 52, justifyContent: 'center', overflow: 'hidden' },
-  picker: { color: '#fff', width: '100%' },
-  dateBtn: { backgroundColor: '#252525', height: 52, borderRadius: 12, borderWidth: 1, borderColor: '#333', justifyContent: 'center', alignItems: 'center' },
-  dateBtnText: { color: '#fff', fontSize: 13, fontWeight: 'bold' },
-  fetchBtn: { backgroundColor: '#00E676', height: 52, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-  fetchText: { color: '#000', fontWeight: 'bold', fontSize: 13 },
-  contentArea: { flex: 1 },
+  container: { flex: 1, backgroundColor: '#09090B' },
+  filterCard: { 
+    paddingTop: Platform.OS === 'ios' ? 60 : 30, paddingBottom: 25, backgroundColor: '#18181B', 
+    paddingHorizontal: 25, borderBottomWidth: 1, borderBottomColor: '#27272A', zIndex: 100,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.5, shadowRadius: 15, elevation: 10
+  },
+  headerTitle: { color: '#FAFAFA', fontSize: 24, fontWeight: '900', marginBottom: 20, letterSpacing: -0.5 },
+  inputGroup: { marginBottom: 20 },
+  actionRow: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' },
+  label: { color: '#71717A', fontSize: 10, fontWeight: '800', marginBottom: 10, letterSpacing: 1 },
+  pickerWrapper: { backgroundColor: '#27272A', borderRadius: 14, height: 55, justifyContent: 'center', overflow: 'hidden' },
+  picker: { color: '#FAFAFA', width: '100%', fontWeight: '600' },
+  dateBtn: { backgroundColor: '#27272A', height: 55, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
+  dateBtnText: { color: '#FAFAFA', fontSize: 14, fontWeight: '700' },
+  fetchBtn: { backgroundColor: '#10B981', height: 55, borderRadius: 14, justifyContent: 'center', alignItems: 'center', shadowColor: '#10B981', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 6 },
+  fetchText: { color: '#064E3B', fontWeight: '900', fontSize: 13, letterSpacing: 1 },
+  
+  contentArea: { flex: 1, backgroundColor: '#121212' },
   centerBox: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 40 },
-  initialText: { color: '#555', textAlign: 'center', fontSize: 14 },
-  movingMarker: { backgroundColor: '#fff', padding: 5, borderRadius: 20, borderWidth: 2, borderColor: '#00E676' },
-  playBtn: { position: 'absolute', top: 20, alignSelf: 'center', backgroundColor: '#00E676', paddingHorizontal: 15, paddingVertical: 8, borderRadius: 20, elevation: 10, zIndex: 1000 },
-  playText: { color: '#000', fontWeight: 'bold', fontSize: 11 },
-  summaryBar: { position: 'absolute', bottom: 30, left: 15, right: 15, backgroundColor: '#1E1E1E', flexDirection: 'row', padding: 12, borderRadius: 15, borderWidth: 1, borderColor: '#333', elevation: 10 },
-  summaryItem: { flex: 1, alignItems: 'center' },
-  summaryLabel: { color: '#666', fontSize: 7, fontWeight: 'bold' },
-  summaryVal: { color: '#00E676', fontSize: 13, fontWeight: 'bold', marginTop: 2 },
-  vDivider: { width: 1, height: 20, backgroundColor: '#333' },
-  iosPickerOverlay: { flex: 1, justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.8)' },
-  iosPickerContainer: { backgroundColor: '#1A1A1A', marginHorizontal: 20, padding: 15, borderRadius: 20 },
-  iosDoneBtn: { alignSelf: 'flex-end', padding: 10 },
-  iosDoneText: { color: '#00E676', fontWeight: 'bold', fontSize: 16 }
+  initialText: { color: '#71717A', textAlign: 'center', fontSize: 15, fontWeight: '500' },
+  
+  movingMarker: { backgroundColor: '#18181B', padding: 8, borderRadius: 25, borderWidth: 3, borderColor: '#10B981', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 5 },
+  playBtn: { position: 'absolute', top: 25, alignSelf: 'center', backgroundColor: '#10B981', paddingHorizontal: 20, paddingVertical: 12, borderRadius: 25, shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 10, zIndex: 1000 },
+  playText: { color: '#064E3B', fontWeight: '900', fontSize: 12, letterSpacing: 1 },
+  
+  summaryBar: { position: 'absolute', bottom: 35, left: 20, right: 20, backgroundColor: 'rgba(24, 24, 27, 0.95)', flexDirection: 'row', paddingVertical: 20, paddingHorizontal: 15, borderRadius: 20, borderWidth: 1, borderColor: '#3F3F46', shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.5, shadowRadius: 15, elevation: 15 },
+  summaryItem: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  summaryLabel: { color: '#71717A', fontSize: 9, fontWeight: '800', letterSpacing: 1, marginBottom: 6 },
+  summaryVal: { color: '#10B981', fontSize: 18, fontWeight: '900' },
+  summaryValSub: { color: '#FAFAFA', fontSize: 13, fontWeight: '700', marginTop: 3 },
+  vDivider: { width: 1, height: '80%', backgroundColor: '#3F3F46', alignSelf: 'center' },
+  
+  iosPickerOverlay: { flex: 1, justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.85)' },
+  iosPickerContainer: { backgroundColor: '#18181B', marginHorizontal: 20, padding: 20, borderRadius: 25, borderWidth: 1, borderColor: '#27272A' },
+  iosDoneBtn: { alignSelf: 'flex-end', paddingBottom: 15 },
+  iosDoneText: { color: '#10B981', fontWeight: '900', fontSize: 16, letterSpacing: 1 }
 });

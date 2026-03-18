@@ -38,8 +38,8 @@ export default function SimpleSidebar({ children, onLogout, onNavigate, userRole
       let { status: bgStatus } = await Location.getBackgroundPermissionsAsync();
       let isServicesEnabled = await Location.hasServicesEnabledAsync();
       
-      const isExpoGo = Platform.OS === 'android' && (Constants.appOwnership === 'expo' || Constants.appOwnership === 'guest');
-      const bgGrantedOrBypassed = bgStatus === 'granted' || isExpoGo;
+      const isExpoGo = Constants.appOwnership === 'expo' || Constants.appOwnership === 'guest';
+      const bgGrantedOrBypassed = bgStatus === 'granted' || isExpoGo || Platform.OS === 'ios';
 
       setDebugStatus(`FG:${permStatus}, BG:${bgStatus}${isExpoGo ? ' (EXPO GO)' : ''}`);
       const isGranted = permStatus === 'granted' && bgGrantedOrBypassed && isServicesEnabled;
@@ -102,8 +102,10 @@ export default function SimpleSidebar({ children, onLogout, onNavigate, userRole
         const { status: fgStatus } = await Location.requestForegroundPermissionsAsync();
         if (fgStatus === 'granted') {
           // Step 2: Request background permission (Always Allow)
+          const isExpoGo = Constants.appOwnership === 'expo' || Constants.appOwnership === 'guest';
           const { status: bgStatus } = await Location.requestBackgroundPermissionsAsync();
-          if (bgStatus !== 'granted') {
+          
+          if (bgStatus !== 'granted' && Platform.OS !== 'ios' && !isExpoGo) {
             Alert.alert(
               "Background Location Required",
               'Please select "Allow all the time" (Always Allow) for location so the app can track your duty in the background.',
@@ -219,8 +221,8 @@ export default function SimpleSidebar({ children, onLogout, onNavigate, userRole
               <View style={styles.profileInfo}>
                 <View style={styles.avatar}><Text style={styles.avatarText}>{userRole === 'admin' ? 'AD' : 'FO'}</Text></View>
                 <View style={styles.textContainer}>
-                  <Text style={styles.userName}>{userRole === 'admin' ? 'Admin' : 'Officer'}</Text>
                   <Text style={styles.brandText}>F.O.S MENU</Text>
+                  <Text style={styles.userName}>{userRole === 'admin' ? 'ADMINISTRATOR' : 'FIELD OFFICER'}</Text>
                 </View>
               </View>
            </View>
@@ -272,9 +274,9 @@ const styles = StyleSheet.create({
   profileInfo: { flexDirection: 'row', alignItems: 'center' },
   avatar: { width: 50, height: 50, borderRadius: 10, backgroundColor: '#00E676', justifyContent: 'center', alignItems: 'center' },
   avatarText: { fontWeight: 'bold', color: '#000' },
-  textContainer: { marginLeft: 12 },
-  userName: { color: '#fff', fontWeight: 'bold' },
-  brandText: { color: '#00E676', fontSize: 10, fontWeight: 'bold' },
+  textContainer: { marginLeft: 15, justifyContent: 'center' },
+  brandText: { color: '#FAFAFA', fontSize: 16, fontWeight: '900', letterSpacing: 1 },
+  userName: { color: '#10B981', fontSize: 11, fontWeight: '800', marginTop: 4, letterSpacing: 0.5 },
   menuContainer: { flex: 1, padding: 15 },
   menuItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 15 },
   menuEmoji: { fontSize: 18, marginRight: 15 },

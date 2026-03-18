@@ -29,6 +29,12 @@ export const checkIn = async (req, res) => {
     const userId = req.user._id;
     const today = new Date().toISOString().split('T')[0];
 
+    // NEW: Check for 9 PM Restriction
+    const currentHour = new Date().getHours();
+    if (currentHour >= 21) {
+      return res.status(403).json({ success: false, message: 'Duty cannot be started after 9:00 PM.' });
+    }
+
     // 1. Check for ANY 'In Progress' record regardless of date
     const staleRecord = await Attendance.findOne({ userId, status: 'In Progress' });
     
@@ -124,6 +130,12 @@ export const resumeDuty = async (req, res) => {
   try {
     const userId = req.user._id;
     const today = new Date().toISOString().split('T')[0];
+
+    // NEW: Check for 9 PM Restriction
+    const currentHour = new Date().getHours();
+    if (currentHour >= 21) {
+      return res.status(403).json({ success: false, message: 'Duty cannot be resumed after 9:00 PM.' });
+    }
 
     // Find today's record regardless of status (Terminated, Half Day, etc.)
     const record = await Attendance.findOne({ userId, date: today });

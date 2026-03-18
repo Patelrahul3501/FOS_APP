@@ -57,8 +57,8 @@ const generateMarkedDates = (history) => {
   const todayStr = now.toISOString().split('T')[0];
   const todayDate = new Date(todayStr);
 
-  // UPDATED: i <= 90 to see 3 months into the future
-  for (let i = -60; i <= 90; i++) {
+  // UPDATED: Limit history to past 30 days for better performance viewing
+  for (let i = -30; i <= 30; i++) {
     const d = new Date(todayDate);
     d.setDate(d.getDate() + i);
     const dayStr = d.toISOString().split('T')[0];

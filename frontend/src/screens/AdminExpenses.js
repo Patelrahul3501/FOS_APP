@@ -51,28 +51,24 @@ export default function AdminExpenses() {
     }
   };
 
-  // Helper: Format Time (e.g., 10:30 AM)
   const formatTime = (dateStr) => {
     if (!dateStr) return "--:--";
     const date = new Date(dateStr);
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
   };
 
-  // DELETE Logic
   const handleDelete = (id) => {
     Alert.alert("Delete Expense", "Permanently remove this expense record?", [
-      { text: "Cancel" },
+      { text: "Cancel", style: "cancel" },
       { text: "Delete", style: 'destructive', onPress: async () => {
         try {
           await api.delete(`/admin/expenses/${id}`);
-          Alert.alert("Success", "Record deleted.");
           fetchFilteredExpenses();
         } catch (e) { Alert.alert("Error", "Delete failed."); }
       }}
     ]);
   };
 
-  // EDIT Logic
   const handleUpdate = async () => {
     if (!editingItem.title || !editingItem.amount) return Alert.alert("Error", "Fill all fields");
     try {
@@ -94,31 +90,31 @@ export default function AdminExpenses() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.header}>Global Expenses</Text>
+      <Text style={styles.headerTitle}>Expense Logs</Text>
       
       <View style={styles.filterCard}>
-        <Text style={styles.label}>Select Officer</Text>
-        <TouchableOpacity style={styles.dropdown} onPress={() => setUserModalVisible(true)}>
+        <Text style={styles.label}>SELECT OFFICER</Text>
+        <TouchableOpacity style={styles.dropdown} activeOpacity={0.8} onPress={() => setUserModalVisible(true)}>
           <Text style={styles.dropdownText}>{selectedUser.name}</Text>
-          <Text style={styles.dropdownText}>▼</Text>
+          <Text style={styles.dropdownIcon}>▼</Text>
         </TouchableOpacity>
 
         <View style={styles.row}>
-          <View style={{ flex: 1, marginRight: 10 }}>
-            <Text style={styles.label}>From Date</Text>
-            <TouchableOpacity style={styles.dateBtn} onPress={() => setStartPickerVisibility(true)}>
-              <Text style={styles.dateBtnText}>{startDate}</Text>
+          <View style={{ flex: 1, marginRight: 12 }}>
+            <Text style={styles.label}>START DATE</Text>
+            <TouchableOpacity style={styles.dateBtn} activeOpacity={0.8} onPress={() => setStartPickerVisibility(true)}>
+              <Text style={styles.dateBtnText}>{new Date(startDate).toLocaleDateString()}</Text>
             </TouchableOpacity>
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.label}>To Date</Text>
-            <TouchableOpacity style={styles.dateBtn} onPress={() => setEndPickerVisibility(true)}>
-              <Text style={styles.dateBtnText}>{endDate}</Text>
+            <Text style={styles.label}>END DATE</Text>
+            <TouchableOpacity style={styles.dateBtn} activeOpacity={0.8} onPress={() => setEndPickerVisibility(true)}>
+              <Text style={styles.dateBtnText}>{new Date(endDate).toLocaleDateString()}</Text>
             </TouchableOpacity>
           </View>
         </View>
 
-        <TouchableOpacity style={styles.searchBtn} onPress={fetchFilteredExpenses} disabled={loading}>
+        <TouchableOpacity style={styles.searchBtn} activeOpacity={0.8} onPress={fetchFilteredExpenses} disabled={loading}>
           {loading ? <ActivityIndicator size="small" color="#000" /> : <Text style={styles.searchBtnText}>GENERATE REPORT</Text>}
         </TouchableOpacity>
       </View>
@@ -126,7 +122,8 @@ export default function AdminExpenses() {
       <FlatList
         data={expenses}
         keyExtractor={(item) => item._id}
-        contentContainerStyle={{ paddingBottom: 20 }}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 25 }}
         renderItem={({ item }) => (
           <View style={styles.card}>
             <View style={styles.cardHeader}>
@@ -135,10 +132,13 @@ export default function AdminExpenses() {
             </View>
             <Text style={styles.title}>{item.title}</Text>
             
-            {/* DATE AND UPLOAD TIME ROW */}
             <View style={styles.dateTimeContainer}>
-                <Text style={styles.dateText}>📅 {new Date(item.date).toLocaleDateString()}</Text>
-                <Text style={styles.timeText}>🕒 {formatTime(item.date)}</Text>
+                <View style={styles.badge}>
+                  <Text style={styles.dateText}>📅 {new Date(item.date).toLocaleDateString()}</Text>
+                </View>
+                <View style={[styles.badge, styles.badgeTime]}>
+                  <Text style={styles.timeText}>🕒 {formatTime(item.date)}</Text>
+                </View>
             </View>
             
             <View style={styles.actionRow}>
@@ -147,19 +147,24 @@ export default function AdminExpenses() {
                     setEditingItem({ id: item._id, title: item.title, amount: String(item.amount) });
                     setEditModalVisible(true);
                   }}
-                  style={styles.editBtn}>
-                    <Text style={styles.editBtnText}>Edit</Text>
+                  style={styles.actionBtn}>
+                    <Text style={styles.editLabel}>EDIT</Text>
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => handleDelete(item._id)} style={styles.deleteBtn}>
-                    <Text style={styles.deleteBtnText}>Delete</Text>
+                <TouchableOpacity onPress={() => handleDelete(item._id)} style={[styles.actionBtn, styles.deleteBtn]}>
+                    <Text style={styles.deleteLabel}>DELETE</Text>
                 </TouchableOpacity>
             </View>
           </View>
         )}
+        ListEmptyComponent={
+          <View style={{ alignItems: 'center', marginTop: 30 }}>
+            <Text style={{ color: '#71717A', fontStyle: 'italic' }}>No expenses found for this period.</Text>
+          </View>
+        }
       />
 
       <View style={styles.totalContainer}>
-          <Text style={styles.totalLabel}>Filtered Total ({expenses.length} records):</Text>
+          <Text style={styles.totalLabel}>Filtered Total ({expenses.length})</Text>
           <Text style={styles.totalVal}>₹{totalAmount.toLocaleString()}</Text>
       </View>
 
@@ -167,7 +172,7 @@ export default function AdminExpenses() {
       <Modal visible={userModalVisible} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Choose Officer</Text>
+            <Text style={styles.modalTitle}>Select Officer</Text>
             <TouchableOpacity style={styles.userOption} onPress={() => { setSelectedUser({id: '', name: 'All Officers'}); setUserModalVisible(false); }}>
               <Text style={styles.userOptionText}>All Officers</Text>
             </TouchableOpacity>
@@ -176,7 +181,9 @@ export default function AdminExpenses() {
                   <Text style={styles.userOptionText}>{item.name}</Text>
                 </TouchableOpacity>
             )} />
-            <TouchableOpacity onPress={() => setUserModalVisible(false)} style={styles.closeBtn}><Text style={{color: '#FF5252', fontWeight: 'bold'}}>Cancel</Text></TouchableOpacity>
+            <TouchableOpacity onPress={() => setUserModalVisible(false)} style={styles.closeBtn}>
+                <Text style={styles.closeBtnText}>CANCEL</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -184,27 +191,39 @@ export default function AdminExpenses() {
       {/* MODAL: EDIT EXPENSE */}
       <Modal visible={editModalVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Update Expense</Text>
-            <TextInput 
-                style={styles.input} 
-                placeholder="Title" 
-                placeholderTextColor="#666"
-                value={editingItem.title} 
-                onChangeText={(t) => setEditingItem({...editingItem, title: t})} 
-            />
-            <TextInput 
-                style={styles.input} 
-                placeholder="Amount" 
-                placeholderTextColor="#666"
-                keyboardType="numeric"
-                value={editingItem.amount} 
-                onChangeText={(t) => setEditingItem({...editingItem, amount: t})} 
-            />
-            <TouchableOpacity style={styles.updateBtn} onPress={handleUpdate}>
-                <Text style={styles.updateBtnText}>SAVE CHANGES</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => setEditModalVisible(false)} style={styles.closeBtn}><Text style={{color: '#FF5252'}}>Cancel</Text></TouchableOpacity>
+          <View style={styles.modalBody}>
+            <Text style={styles.modalTitle}>Edit Expense</Text>
+            
+            <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>EXPENSE TITLE</Text>
+                <TextInput 
+                    style={styles.input} 
+                    placeholder="E.g. Fuel" 
+                    placeholderTextColor="#71717A"
+                    value={editingItem.title} 
+                    onChangeText={(t) => setEditingItem({...editingItem, title: t})} 
+                />
+            </View>
+            <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>AMOUNT (₹)</Text>
+                <TextInput 
+                    style={styles.input} 
+                    placeholder="0" 
+                    placeholderTextColor="#71717A"
+                    keyboardType="numeric"
+                    value={editingItem.amount} 
+                    onChangeText={(t) => setEditingItem({...editingItem, amount: t})} 
+                />
+            </View>
+            
+            <View style={styles.modalFooter}>
+              <TouchableOpacity style={styles.modalCancel} onPress={() => setEditModalVisible(false)}>
+                <Text style={styles.modalCancelText}>CANCEL</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.modalSave} onPress={handleUpdate}>
+                <Text style={styles.modalSaveText}>UPDATE</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -216,43 +235,57 @@ export default function AdminExpenses() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#121212', paddingHorizontal: 20, paddingTop: 10 },
-  header: { color: '#fff', fontSize: 22, fontWeight: 'bold', textAlign: 'center', marginBottom: 5 },
-  filterCard: { backgroundColor: '#1E1E1E', padding: 15, borderRadius: 15, marginVertical: 10, borderWidth: 1, borderColor: '#333' },
-  label: { color: '#00E676', fontSize: 12, marginBottom: 5, fontWeight: 'bold' },
-  dropdown: { backgroundColor: '#333', padding: 12, borderRadius: 8, marginBottom: 15, flexDirection: 'row', justifyContent: 'space-between' },
-  dropdownText: { color: '#fff' },
-  row: { flexDirection: 'row', marginBottom: 15 },
-  dateBtn: { backgroundColor: '#333', padding: 12, borderRadius: 8, alignItems: 'center' },
-  dateBtnText: { color: '#fff' },
-  searchBtn: { backgroundColor: '#00E676', padding: 15, borderRadius: 10, alignItems: 'center' },
-  searchBtnText: { fontWeight: 'bold', color: '#000' },
-  card: { backgroundColor: '#1E1E1E', padding: 15, borderRadius: 12, marginBottom: 12, borderLeftWidth: 4, borderLeftColor: '#00E676' },
-  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 },
-  userName: { color: '#00E676', fontWeight: 'bold', fontSize: 14 },
-  amount: { color: '#fff', fontWeight: 'bold', fontSize: 18 },
-  title: { color: '#ddd', fontSize: 16 },
+  container: { flex: 1, backgroundColor: '#09090B', paddingHorizontal: 20, paddingTop: 10 },
+  headerTitle: { color: '#FAFAFA', fontSize: 28, fontWeight: '900', marginBottom: 15, letterSpacing: -0.5 },
   
-  // NEW TIME STYLES
-  dateTimeContainer: { flexDirection: 'row', alignItems: 'center', marginTop: 8 },
-  dateText: { color: '#888', fontSize: 11, marginRight: 15 },
-  timeText: { color: '#00E676', fontSize: 11, fontWeight: '600' },
+  filterCard: { backgroundColor: '#18181B', padding: 20, borderRadius: 20, marginBottom: 20, borderWidth: 1, borderColor: '#27272A', shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 8 },
+  label: { color: '#71717A', fontSize: 10, fontWeight: '800', letterSpacing: 1, marginBottom: 8 },
+  dropdown: { backgroundColor: '#27272A', padding: 15, borderRadius: 12, marginBottom: 18, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  dropdownText: { color: '#FAFAFA', fontWeight: '600', fontSize: 15 },
+  dropdownIcon: { color: '#10B981', fontSize: 12 },
+  row: { flexDirection: 'row', marginBottom: 18 },
+  dateBtn: { backgroundColor: '#27272A', padding: 14, borderRadius: 12, alignItems: 'center' },
+  dateBtnText: { color: '#FAFAFA', fontWeight: '600' },
+  searchBtn: { backgroundColor: '#10B981', padding: 16, borderRadius: 12, alignItems: 'center', shadowColor: '#10B981', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 5 },
+  searchBtnText: { fontWeight: '900', color: '#064E3B', letterSpacing: 1 },
+  
+  card: { backgroundColor: '#18181B', padding: 20, borderRadius: 18, marginBottom: 15, borderWidth: 1, borderColor: '#27272A', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 5 },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  userName: { color: '#10B981', fontWeight: '800', fontSize: 13, textTransform: 'uppercase', letterSpacing: 0.5 },
+  amount: { color: '#FBBF24', fontWeight: '900', fontSize: 24 },
+  title: { color: '#FAFAFA', fontSize: 17, fontWeight: '600', marginBottom: 12 },
+  
+  dateTimeContainer: { flexDirection: 'row', alignItems: 'center' },
+  badge: { backgroundColor: '#27272A', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, marginRight: 10 },
+  badgeTime: { backgroundColor: 'rgba(16, 185, 129, 0.1)' },
+  dateText: { color: '#A1A1AA', fontSize: 11, fontWeight: '600' },
+  timeText: { color: '#10B981', fontSize: 11, fontWeight: '800' },
 
-  actionRow: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 10 },
-  editBtn: { paddingHorizontal: 15, paddingVertical: 5, backgroundColor: 'rgba(0, 230, 118, 0.1)', borderRadius: 5, marginRight: 10 },
-  editBtnText: { color: '#00E676', fontSize: 12, fontWeight: 'bold' },
-  deleteBtn: { paddingHorizontal: 15, paddingVertical: 5, backgroundColor: 'rgba(255, 82, 82, 0.1)', borderRadius: 5 },
-  deleteBtnText: { color: '#FF5252', fontSize: 12, fontWeight: 'bold' },
-  totalContainer: { backgroundColor: '#1E1E1E', padding: 20, borderRadius: 15, borderTopWidth: 2, borderTopColor: '#00E676', marginBottom: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  totalLabel: { color: '#888', fontSize: 13 },
-  totalVal: { color: '#00E676', fontSize: 22, fontWeight: 'bold' },
+  actionRow: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 15, borderTopWidth: 1, borderTopColor: '#27272A', paddingTop: 15 },
+  actionBtn: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 8, backgroundColor: 'rgba(16, 185, 129, 0.1)', marginLeft: 10 },
+  editLabel: { color: '#10B981', fontWeight: '800', fontSize: 11, letterSpacing: 1 },
+  deleteBtn: { backgroundColor: 'rgba(239, 68, 68, 0.1)' },
+  deleteLabel: { color: '#EF4444', fontWeight: '800', fontSize: 11, letterSpacing: 1 },
+  
+  totalContainer: { backgroundColor: '#18181B', padding: 22, borderRadius: 20, borderTopWidth: 3, borderTopColor: '#10B981', marginTop: 5, marginBottom: 30, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 12, elevation: 10 },
+  totalLabel: { color: '#A1A1AA', fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1 },
+  totalVal: { color: '#10B981', fontSize: 28, fontWeight: '900' },
+  
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center' },
-  modalContent: { width: '85%', maxHeight: '70%', backgroundColor: '#1E1E1E', borderRadius: 20, padding: 25, borderWidth: 1, borderColor: '#333' },
-  modalTitle: { color: '#00E676', fontSize: 20, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
-  userOption: { paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#333' },
-  userOptionText: { color: '#fff', fontSize: 16 },
-  closeBtn: { marginTop: 15, alignItems: 'center' },
-  input: { backgroundColor: '#333', color: '#fff', padding: 15, borderRadius: 10, marginBottom: 15 },
-  updateBtn: { backgroundColor: '#00E676', padding: 15, borderRadius: 10, alignItems: 'center', marginTop: 10 },
-  updateBtnText: { color: '#000', fontWeight: 'bold' }
+  modalContent: { width: '88%', maxHeight: '75%', backgroundColor: '#18181B', borderRadius: 24, padding: 25, borderWidth: 1, borderColor: '#27272A' },
+  modalBody: { width: '88%', backgroundColor: '#18181B', padding: 25, borderRadius: 24, borderWidth: 1, borderColor: '#27272A' },
+  modalTitle: { color: '#FAFAFA', fontSize: 22, fontWeight: '900', marginBottom: 25, letterSpacing: -0.5 },
+  userOption: { paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#27272A' },
+  userOptionText: { color: '#FAFAFA', fontSize: 16, fontWeight: '500' },
+  closeBtn: { marginTop: 20, padding: 15, backgroundColor: '#27272A', borderRadius: 12, alignItems: 'center' },
+  closeBtnText: { color: '#EF4444', fontWeight: '800', letterSpacing: 1 },
+  
+  inputGroup: { marginBottom: 18 },
+  inputLabel: { color: '#71717A', fontSize: 10, fontWeight: '800', letterSpacing: 1, marginBottom: 8 },
+  input: { backgroundColor: '#27272A', color: '#FAFAFA', padding: 16, borderRadius: 12, fontWeight: '600', fontSize: 16 },
+  modalFooter: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 },
+  modalCancel: { flex: 1, padding: 16, borderRadius: 14, backgroundColor: '#27272A', marginRight: 10, alignItems: 'center' },
+  modalCancelText: { color: '#FAFAFA', fontWeight: '800', letterSpacing: 1, fontSize: 13 },
+  modalSave: { flex: 1, padding: 16, borderRadius: 14, backgroundColor: '#10B981', alignItems: 'center' },
+  modalSaveText: { color: '#064E3B', fontWeight: '900', letterSpacing: 1, fontSize: 13 }
 });
