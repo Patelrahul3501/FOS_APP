@@ -2,7 +2,7 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export const api = axios.create({
-  baseURL: 'http://172.20.10.2:5000/api' || 'https://fos-app-1rwm.onrender.com/api', 
+  baseURL: 'https://fos-app-1rwm.onrender.com/api' || 'http://172.20.10.2:5000/api', 
   timeout: 10000,
 });
 
