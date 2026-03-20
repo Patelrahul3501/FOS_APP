@@ -67,23 +67,45 @@ export default function UserDashboard() {
 
   const syncLocationToServer = async () => {
     try {
-      let loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-      const coords = {
-        latitude: loc.coords.latitude,
-        longitude: loc.coords.longitude,
-        latitudeDelta: 0.005,
-        longitudeDelta: 0.005,
-      };
+      let loc;
 
-      setLocation(coords);
-      await api.post('/attendance/update-location', {
-        lat: loc.coords.latitude,
-        lng: loc.coords.longitude
-      });
+      if (Platform.OS === 'android') {
+        // On Android (Expo Go), getCurrentPositionAsync fails without "Always Allow" permission.
+        // Use last-known position directly for map display.
+        loc = await Location.getLastKnownPositionAsync({});
+      } else {
+        // On iOS, try to get a fresh position with a reasonable timeout.
+        try {
+          loc = await Promise.race([
+            Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Location Timeout')), 12000))
+          ]);
+        } catch (e) {
+          console.log('Sync Error (iOS):', e.message);
+          loc = await Location.getLastKnownPositionAsync({});
+        }
+      }
 
-      setLastSyncTime(new Date().toISOString());
+      if (loc) {
+        const coords = {
+          latitude: loc.coords.latitude,
+          longitude: loc.coords.longitude,
+          latitudeDelta: 0.005,
+          longitudeDelta: 0.005,
+        };
+        setLocation(coords);
+
+        // Only push to server if position is recent (<2min) to avoid stale data.
+        if (Date.now() - loc.timestamp < 120000) {
+          await api.post('/attendance/update-location', {
+            lat: loc.coords.latitude,
+            lng: loc.coords.longitude
+          });
+          setLastSyncTime(new Date().toISOString());
+        }
+      }
     } catch (e) {
-      console.log("Sync Error:", e.message);
+      console.log('Sync Error Final:', e.message);
     }
   };
 
@@ -212,19 +234,62 @@ export default function UserDashboard() {
   };
 
   const proceedWithAttendance = async () => {
-    const camPerm = await ImagePicker.requestCameraPermissionsAsync();
-    if (!camPerm.granted) return Alert.alert("Error", "Camera required");
+    // 1. Check/Request Camera Permissions first
+    const { status: existingStatus } = await ImagePicker.getCameraPermissionsAsync();
+    let finalStatus = existingStatus;
+
+    if (existingStatus !== 'granted') {
+      const { status: requestedStatus } = await ImagePicker.requestCameraPermissionsAsync();
+      finalStatus = requestedStatus;
+    }
+
+    if (finalStatus !== 'granted') {
+      return Alert.alert(
+        "Camera Permission Required", 
+        "FOS requires camera access to take a selfie for attendance verification. Please enable it in Settings.",
+        [{ text: "OK" }, { text: "Open Settings", onPress: () => Linking.openSettings() }]
+      );
+    }
     
     setLoading(true);
     try {
-      // FIX 1: Try to get last known immediately. If null (first time), fall back to getting current with balanced accuracy.
-      // This eliminates the 5-10 second GPS satellite lock delay on newer devices.
+      // 2. Get Location - Android-safe Strategy
+      // On Android (especially Expo Go), getCurrentPositionAsync can fail without full permissions.
+      // Strategy: Use getLastKnownPositionAsync first. Only call getCurrentPositionAsync on iOS 
+      // or as a last resort if no last-known position exists at all.
       let currentLoc = await Location.getLastKnownPositionAsync({});
+
       if (!currentLoc) {
-          currentLoc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        // No last known position — try live (this is the only scenario we call getCurrentPositionAsync on Android)
+        try {
+          currentLoc = await Promise.race([
+            Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Low }),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('GPS Timeout')), 20000))
+          ]);
+        } catch (locErr) {
+          console.log('Location fetch failed:', locErr.message);
+        }
+      } else if (Platform.OS === 'ios') {
+        // On iOS, always refresh if the last known position is older than 2 minutes
+        if (Date.now() - currentLoc.timestamp > 120000) {
+          try {
+            const fresh = await Promise.race([
+              Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+              new Promise((_, reject) => setTimeout(() => reject(new Error('GPS Timeout')), 15000))
+            ]);
+            if (fresh) currentLoc = fresh;
+          } catch (e) {
+            console.log('iOS fresh location failed, using last known:', e.message);
+          }
+        }
+      }
+      // On Android, if last known exists, we just use it — no live request, eliminates the hang.
+
+      if (!currentLoc || !currentLoc.coords) {
+        throw new Error('Unable to obtain location. Please ensure GPS is ON, then open the app again to refresh your position.');
       }
       
-      // FIX 2: Compress selfie further (0.2 instead of 0.4) to halve the base64 string size for faster network transfer
+      // 3. Launch Camera
       let result = await ImagePicker.launchCameraAsync({ 
         cameraType: ImagePicker.CameraType.front, 
         allowsEditing: true, 
@@ -232,16 +297,32 @@ export default function UserDashboard() {
         base64: true 
       });
       
-      if (!result.canceled) {
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const selfieBase64 = result.assets[0].base64;
+        if (!selfieBase64) throw new Error("Selfie capture failed (empty image data).");
+
         const endpoint = status === 'none' ? '/attendance/check-in' : '/attendance/check-out';
+        
         await api.post(endpoint, { 
-          selfie: result.assets[0].base64,
+          selfie: selfieBase64,
           location: { lat: currentLoc.coords.latitude, lng: currentLoc.coords.longitude } 
         });
+        
         refreshDashboard(); 
       }
-    } catch (e) { Alert.alert("Error", "Action Failed"); } 
-    finally { setLoading(false); }
+    } catch (e) { 
+      console.log("Attendance Error:", e);
+      // Determine error message
+      let msg = "Action Failed";
+      if (e.response && e.response.data && e.response.data.message) {
+        msg = e.response.data.message;
+      } else if (e.message) {
+        msg = e.message;
+      }
+      Alert.alert("Error", msg); 
+    } finally { 
+      setLoading(false); 
+    }
   };
 
   return (

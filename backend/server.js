@@ -15,6 +15,7 @@ import './utils/cronJobs.js';
 
 dotenv.config();
 const app = express();
+app.set('trust proxy', 1); // Trust Render proxy for accurate rate limiting
 
 // Production Middleware: Security & Speed
 app.use(helmet()); 
