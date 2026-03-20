@@ -8,10 +8,8 @@
       "bundleIdentifier": "com.satnamsales.fosapp",
       "supportsTablet": true,
       "infoPlist": {
-        "UIBackgroundModes": [
-          "location",
-          "fetch"
-        ],
+        "UIBackgroundModes": ["location", "fetch"],
+        "NSCameraUsageDescription": "FOS requires camera access to take duty punch-in selfies.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "This app needs access to your location at all times to track field officer duty sessions.",
         "NSLocationWhenInUseUsageDescription": "This app needs access to your location to track field officer duty sessions.",
         "NSLocationAlwaysUsageDescription": "This app needs access to your location at all times to track field officer duty sessions."
@@ -24,16 +22,12 @@
         "backgroundColor": "#ffffff"
       },
       "permissions": [
+        "CAMERA",
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
         "ACCESS_BACKGROUND_LOCATION",
         "FOREGROUND_SERVICE",
-        "FOREGROUND_SERVICE_LOCATION",
-        "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.ACCESS_FINE_LOCATION",
-        "android.permission.ACCESS_BACKGROUND_LOCATION",
-        "android.permission.FOREGROUND_SERVICE",
-        "android.permission.FOREGROUND_SERVICE_LOCATION"
+        "FOREGROUND_SERVICE_LOCATION"
       ]
     },
     "plugins": [
@@ -45,13 +39,14 @@
           "isAndroidBackgroundLocationEnabled": true,
           "isAndroidForegroundServiceEnabled": true
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow FOS to access your photos.",
+          "cameraPermission": "Allow FOS to access your camera for duty selfies."
+        }
       ]
-    ],
-    "extra": {
-      "eas": {
-        "projectId": "cb9dcc69-d6a9-4380-967d-49b139269d83"
-      }
-    },
-    "owner": "patelrahul01131"
+    ]
   }
 }
