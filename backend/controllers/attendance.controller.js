@@ -62,7 +62,7 @@ export const checkIn = async (req, res) => {
       userId,
       date: today,
       checkInTime: new Date(),
-      checkInLocation: { lat: location.lat, lng: location.lng },
+      checkInLocation: location ? { lat: location.lat, lng: location.lng } : undefined,
       selfie: selfie,
       status: 'In Progress' 
     });
@@ -70,7 +70,8 @@ export const checkIn = async (req, res) => {
     await newRecord.save();
     
     // Log Punch In
-    await logActivity(userId, 'Punch In', `Punched in at ${new Date().toLocaleTimeString()} from lat: ${location.lat}, lng: ${location.lng}`);
+    const locStr = location ? `lat: ${location.lat}, lng: ${location.lng}` : 'Location unavailable';
+    await logActivity(userId, 'Punch In', `Punched in at ${new Date().toLocaleTimeString()} from ${locStr}`);
 
     res.status(201).json({ success: true, message: 'Check-in successful! Duty started.' });
   } catch (error) {
@@ -103,7 +104,9 @@ export const checkOut = async (req, res) => {
     }
 
     record.checkOutTime = outTime;
-    record.checkOutLocation = { lat: location.lat, lng: location.lng };
+    if (location) {
+      record.checkOutLocation = { lat: location.lat, lng: location.lng };
+    }
     record.status = finalStatus;
     record.workHours = diffInHrs.toFixed(2);
     record.selfie = selfie; 

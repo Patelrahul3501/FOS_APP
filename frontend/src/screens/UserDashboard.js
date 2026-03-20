@@ -253,42 +253,36 @@ export default function UserDashboard() {
     
     setLoading(true);
     try {
-      // 2. Get Location - Android-safe Strategy
-      // On Android (especially Expo Go), getCurrentPositionAsync can fail without full permissions.
-      // Strategy: Use getLastKnownPositionAsync first. Only call getCurrentPositionAsync on iOS 
-      // or as a last resort if no last-known position exists at all.
-      let currentLoc = await Location.getLastKnownPositionAsync({});
+      // 2. Get Location - Best-effort, never block the user on failure
+      let currentLoc = null;
+      try {
+        currentLoc = await Location.getLastKnownPositionAsync({});
 
-      if (!currentLoc) {
-        // No last known position — try live (this is the only scenario we call getCurrentPositionAsync on Android)
-        try {
+        if (!currentLoc) {
+          // No cached position — one quick attempt with low accuracy (5s timeout only)
           currentLoc = await Promise.race([
             Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Low }),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('GPS Timeout')), 20000))
+            new Promise((_, reject) => setTimeout(() => reject(new Error('GPS Timeout')), 5000))
           ]);
-        } catch (locErr) {
-          console.log('Location fetch failed:', locErr.message);
-        }
-      } else if (Platform.OS === 'ios') {
-        // On iOS, always refresh if the last known position is older than 2 minutes
-        if (Date.now() - currentLoc.timestamp > 120000) {
+        } else if (Platform.OS === 'ios' && Date.now() - currentLoc.timestamp > 120000) {
+          // iOS: refresh if older than 2 minutes
           try {
             const fresh = await Promise.race([
               Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
               new Promise((_, reject) => setTimeout(() => reject(new Error('GPS Timeout')), 15000))
             ]);
             if (fresh) currentLoc = fresh;
-          } catch (e) {
-            console.log('iOS fresh location failed, using last known:', e.message);
-          }
+          } catch (e) { /* keep old last-known */ }
         }
+      } catch (locErr) {
+        console.log('Location best-effort failed:', locErr.message);
+        // currentLoc stays null — we proceed anyway
       }
-      // On Android, if last known exists, we just use it — no live request, eliminates the hang.
 
-      if (!currentLoc || !currentLoc.coords) {
-        throw new Error('Unable to obtain location. Please ensure GPS is ON, then open the app again to refresh your position.');
-      }
-      
+      const locationPayload = currentLoc
+        ? { lat: currentLoc.coords.latitude, lng: currentLoc.coords.longitude }
+        : null;
+
       // 3. Launch Camera
       let result = await ImagePicker.launchCameraAsync({ 
         cameraType: ImagePicker.CameraType.front, 
@@ -305,7 +299,7 @@ export default function UserDashboard() {
         
         await api.post(endpoint, { 
           selfie: selfieBase64,
-          location: { lat: currentLoc.coords.latitude, lng: currentLoc.coords.longitude } 
+          location: locationPayload
         });
         
         refreshDashboard(); 
